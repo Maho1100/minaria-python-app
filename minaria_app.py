@@ -1,0 +1,1135 @@
+import streamlit as st
+from openai import OpenAI
+import datetime
+import random
+import os
+import base64  # 動画
+
+# ---------- OpenAI クライアント ----------
+# APIキーは環境変数「OPENAI_API_KEY」から読み取る
+api_key = os.getenv("OPENAI_API_KEY")
+
+if not api_key:
+    raise ValueError(
+        "OPENAI_API_KEY が設定されていません。環境変数を設定してください。"
+    )
+
+client = OpenAI(api_key=api_key)
+
+def autoplay_video(path: str, width: str = "70%"):
+    """ローカルの mp4 を自動再生で表示するヘルパー"""
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode("utf-8")
+
+    video_html = f"""
+    <div style='text-align: center;'>
+        <video width="{width}" autoplay loop muted playsinline>
+            <source src="data:video/mp4;base64,{data}" type="video/mp4">
+        </video>
+    </div>
+    """
+    st.markdown(video_html, unsafe_allow_html=True)
+
+# ======================================================
+#  ステージ内で「いま何問目か」を表示するヘルパー
+# ======================================================
+def render_question_progress(current_index: int, total: int, label: str = "いま"):
+    """ステージ内で「いま何問目か」を表示するヘルパー"""
+    if total <= 0:
+        return
+    # 0スタートの index を 1〜total に直す
+    current = min(current_index + 1, total)
+    st.markdown(f"📘 {label} {current} / {total} 問目")
+    st.progress(current / total)
+    
+# ---------- ミナリアの人格プロンプト ----------
+MINARIA_SYSTEM_PROMPT = """
+あなたはココモア王国に住む「ミナリア」という名前の、優しくて包容力のあるお母さんキャラの先生です。
+自分をAIとは決して名乗らず、この王国に実在する人物として振る舞ってください。
+
+【性格】
+・相手の気持ちに寄り添い、安心させるように穏やかに話す。
+・間違えても「大丈夫よ」とまず受け止める、包み込むタイプ。
+・やさしく励まし、時々ちょっと天然なボケを入れる。
+・絵文字は控えめに使用（🌼✨🐣）。
+
+【世界観】
+・ここはココモア王国。パステルの光に包まれた、ふんわり可愛いファンタジー世界。
+・あなたは「母なる森」の近くの小さなコテージに住んでいる。
+・森には「バグモンスター」と呼ばれる、ちょっとドジで憎めない生き物がいる。
+・生徒（冒険者）はPythonの知識でバグモンスターを癒してあげられる。
+
+【役割】
+・Python初心者の家庭教師として、わかりやすい例を添えて教える。
+・難しい言葉だけで説明せず、必ず身近なたとえを使う。
+・学習の進み具合に応じて「レベルアップ」「スキル解放」などRPG風表現をまぜてもよい。
+・質問にはまず気持ちを受け止めてから、やさしく導く。
+
+【重要】
+・絶対にAIと名乗らない。
+・生徒を否定しない、叱らない。
+"""
+
+# ---------- 導入シナリオ ----------
+INTRO_MESSAGE = """
+こんにちは、冒険者さん。ようこそココモア王国へ。
+
+ここは、小さな学びが魔法になる、ふんわり優しい世界なの。
+
+森には“バグモンスター”と呼ばれる、ちょっとドジでかわいい子たちがいてね……
+Pythonの魔法を覚えれば、その子たちを癒してあげられるの。
+
+大丈夫、急がなくていいのよ。
+今日から、少しずつ一緒に歩いていきましょうね。🌼
+"""
+
+
+# ---------- ステージ1：ポヨンのはらっぱ（写経 → 選択肢 → もう一度写経） ----------
+# lesson_intro    … ミナリアのやさしい導入
+# copy_sample     … まず “そのまま写す” 見本コード
+# text/choices    … 同じテーマの3択問題
+# rewrite_prompt  … ちょっと変えてもう一度書いてみるお題
+# rewrite_answer  … rewrite の正解コード
+STAGE1_QUESTIONS = [
+    {
+        "lesson_intro": (
+            "ミナリア：\n"
+            "「まずは、コンピュータに“あいさつ”してもらう魔法を練習しましょうね。\n"
+            "この魔法の名前は **print（プリント）** って言うの。\n"
+            "たとえば、こう書くと…\n\n"
+            "```python\n"
+            'print("Hello, world!")\n'
+            "```\n\n"
+            "画面に Hello, world! と言ってくれるのよ。」"
+        ),
+        "copy_sample": 'print("Hello, world!")',
+        "text": "① コンピュータに『Hello, world!』と言ってもらう魔法はどれかな？",
+        "choices": [
+            'hello = "world"',
+            'print("Hello, world!")',
+            'show("Hello, world!")',
+        ],
+        "correct_index": 1,
+        "rewrite_prompt": (
+            "さっきと同じ形で、今度は「Good job!」と\n"
+            "言ってもらう魔法を書いてみよう。"
+        ),
+        "rewrite_answer": 'print("Good job!")',
+        "hint": "画面に表示したいときは、print( ) の中に文字を入れるよ。",
+        "explain": 'Pythonでは、画面に文字を出すときは print("文字") を使います。',
+        "monster_name": "プリントスライム",
+        "monster_desc": "しゃべりたいのに、どんな魔法を使えばいいかわからず、もごもごしているスライム。print() の呪文で、心の中の言葉を画面に出してあげると安心するよ。",
+        "monster_image": "monster_print_slime.png",
+    },
+    {
+        "lesson_intro": (
+            "ミナリア：\n"
+            "「つぎは“入れもの”の魔法よ。\n"
+            "コンピュータは、数字や言葉を入れておける箱みたいなものを持っているの。\n"
+            "この箱のことを **変数（へんすう）** って呼ぶのよ。\n\n"
+            "たとえば、\n"
+            "```python\n"
+            'name = "Minaria"\n'
+            "```\n"
+            "これは『name という箱に \"Minaria\" を入れる』という意味になるの。」"
+        ),
+        "copy_sample": 'name = "Minaria"',
+        "text": "② 変数 name に 「Minaria」という文字を入れる正しい魔法はどれ？",
+        "choices": [
+            'name == "Minaria"',
+            'name = "Minaria"',
+            '"Minaria" = name',
+        ],
+        "correct_index": 1,
+        "rewrite_prompt": (
+            "今度は、あなたの好きな名前を入れてみよう。\n"
+            'たとえば、"Cocomoa" でもいいし、自分の名前でもいいよ。\n'
+            "name という箱に、その名前を入れるコードを書いてみてね。"
+        ),
+        # 正解としては形だけ見たいので例として1つ決めておく
+        "rewrite_answer": 'name = "Cocomoa"',
+        "hint": "= は「右のものを左に入れる」という意味だよ。",
+        "explain": '変数に値を入れるときは、name == ではなく name = "Minaria" のように = を使います。',
+        "monster_name": "ネームヒヨコ",
+        "monster_desc": "自分の名前を忘れがちな、ぽやぽやヒヨコ。name = \"Minaria\" のように、= の魔法で“名前を入れてあげる”と元気になるんだ。",
+        "monster_image": "monster_name_chick.png",
+    },
+    {
+        "lesson_intro": (
+            "ミナリア：\n"
+            "「さいごは“計算してから言ってもらう”魔法よ。\n"
+            "たとえば、\n"
+            "```python\n"
+            "print(3 + 5)\n"
+            "```\n"
+            "と書くと、3+5 を計算して、結果の 8 を画面に言ってくれるの。」"
+        ),
+        "copy_sample": "print(3 + 5)",
+        "text": "③ 数値 3 と 5 を足して、その結果を表示する正しいコードはどれ？",
+        "choices": [
+            'print("3 + 5")',
+            '3 + 5 print',
+            'print(3 + 5)',
+        ],
+        "correct_index": 2,
+        "rewrite_prompt": (
+            "つぎは 2 と 4 を足して、その結果を表示するコードを書いてみよう。\n"
+            "さっきの形を思い出してね。"
+        ),
+        "rewrite_answer": "print(2 + 4)",
+        "hint": "計算そのものを print( ) のカッコの中に入れてみよう。",
+        "explain": 'print(3 + 5) のように、計算式をそのまま print の中に書くと、結果の 8 が表示されます。',
+        "monster_name": "サンムクラウド",
+        "monster_desc": "数字の雲を集めるのが大好きな雲のモンスター。print(3 + 5) の魔法で雲をまとめてあげると、ふわっと笑うよ。",
+        "monster_image": "monster_sum_cloud.png",
+    },
+]
+
+# ---------- ステージ2：もりねむの小道（if文 3択＋モンスター） ----------
+STAGE2_QUESTIONS = [
+    {
+        "text": "① 「もし夜だったら 'Good night' と表示する」イメージに近いコードはどれ？",
+        "choices": [
+            'if is_night:\n    print("Good night")',
+            'print("Good night")\nif is_night',
+            'is_night = print("Good night")',
+        ],
+        "correct_index": 0,
+        "hint": "if の行の末尾には : （コロン）がつき、その下の行をインデントして書くのがポイントです。",
+        "explain": 'if 条件: の形で書いて、その下の行に実行したい処理（print など）をインデントして書きます。',
+        "monster_name": "フラグホタル",
+        "monster_desc": "ほんとは光れるのに、「今つけていいのかな…？」と迷っているホタル。if is_night: のように、夜かどうか条件を書いてあげると、自信を持って光れるようになるよ。",
+        "monster_image": "monster_flag_firefly.png",
+    },
+    {
+        "text": "② is_hungry が True のときだけ 'Eat lunch' と表示したいときのコードはどれ？",
+        "choices": [
+            'if is_hungry == True:\n    print("Eat lunch")',
+            'if is_hungry = True:\n    print("Eat lunch")',
+            'if "is_hungry":\n    print("Eat lunch")',
+        ],
+        "correct_index": 0,
+        "hint": "== は「左右が同じかどうか」をくらべる記号。= とは意味が違うよ。",
+        "explain": 'if is_hungry == True: のように書くと、「is_hungry が True のときだけ」中の処理が動きます。',
+        "monster_name": "トゥルーベア＆フォルスラビット",
+        "monster_desc": "True が好きなくまさんと、False が好きなうさぎさん。条件が True だと、くまさんが嬉しそうに出てくるよ。",
+        "monster_image": "monster_true_false.png",
+    },
+    {
+        "text": "③ 点数 score が 80 以上のときだけ 'Great!' と表示したい。正しいコードはどれ？",
+        "choices": [
+            'if score > 80:\n    print("Great!")',
+            'if score >= 80:\n    print("Great!")',
+            'if 80 <= score:\nprint("Great!")',
+        ],
+        "correct_index": 1,
+        "hint": "「80点ちょうど」もふくめたいなら >= を使うとよいよ。",
+        "explain": 'if score >= 80: とすると、80点以上の場合に「Great!」が表示されます。',
+        "monster_name": "ドアガーディアン",
+        "monster_desc": "条件を満たした人だけ通してくれるドアの番人。score >= 80 のように条件を書いてあげると、「がんばった人」をちゃんと通してくれるんだ。",
+        "monster_image": "monster_door_guardian.png",
+    },
+]
+
+# ---------- ステージ3：くるくるループの塔（for文 3択＋モンスター） ----------
+STAGE3_QUESTIONS = [
+    {
+        "text": "① 1〜3 の数字を順番に表示したい。いちばん素直なコードはどれ？",
+        "choices": [
+            'for i in range(1, 4):\n    print(i)',
+            'for i in [1..3]:\n    print(i)',
+            'for i in range(3):\nprint(i+1)',
+        ],
+        "correct_index": 0,
+        "hint": "range(開始, 終わりの1つあと) という形で書くよ。1〜3なら range(1, 4)。",
+        "explain": 'for i in range(1, 4): と書くと、i が 1, 2, 3 と変わりながらループします。',
+        "monster_name": "くるくるスライム",
+        "monster_desc": "同じ階段をぐるぐる回っているスライム。for i in range(1, 4): のループで、一段ずつ上へ進むのを手伝ってあげよう。",
+        "monster_image": "monster_loop_slime.png",
+    },
+    {
+        "text": "② fruits = [\"apple\", \"banana\"] を1つずつ表示したい。正しいコードはどれ？",
+        "choices": [
+            'for fruit in fruits:\n    print(fruit)',
+            'for fruits in fruit:\n    print(fruit)',
+            'for i in range(fruits):\n    print(fruits[i])',
+        ],
+        "correct_index": 0,
+        "hint": "リストを1つずつ取り出したいときは、for 変数 in リスト: の形が使えるよ。",
+        "explain": 'for fruit in fruits: とすると、fruits の中身を1つずつ取り出して、fruit に入れながらループします。',
+        "monster_name": "リストキャタピラー",
+        "monster_desc": "りんごとバナナの実でできたイモムシ。for fruit in fruits: のループで、体の実を1つずつ数えてあげると安心する。",
+        "monster_image": "monster_list_caterpillar.png",
+    },
+    {
+        "text": "③ 「Hello」を 3 回だけ表示したい。いちばん分かりやすいコードはどれ？",
+        "choices": [
+            'for i in range(3):\n    print("Hello")',
+            'for i in range(1, 3):\n    print("Hello")',
+            'for "Hello" in range(3):\n    print("Hello")',
+        ],
+        "correct_index": 0,
+        "hint": "range(3) は 0, 1, 2 の3回まわるよ。「回数分まわすとき」に便利。",
+        "explain": 'for i in range(3): とすると、3 回ループします。そのたびに print("Hello") が実行されます。',
+        "monster_name": "カウントクロック",
+        "monster_desc": "何回まわったか数えるのが好きな時計モンスター。for i in range(3): のループで、3回ちょうど鳴らしてあげよう。",
+        "monster_image": "monster_count_clock.png",
+    },
+]
+
+def normalize_code(code: str) -> str:
+    """空白をなくし、シングルクォートをダブルクォートにそろえる簡易正規化"""
+    return code.replace(" ", "").replace("'", '"').strip()
+
+
+# ---------- Streamlit 基本設定 ----------
+st.set_page_config(page_title="ミナリアのPythonクエスト", page_icon="🐣")
+
+# ✅ 共通スタイル（フェードイン・XPアニメ・ボタン拡大）
+st.markdown("""
+<style>
+/* 正解ボックスのフェードイン */
+.correct-box {
+    background-color: #E9FFE9;
+    border-radius: 16px;
+    border: 2px solid #88D788;
+    padding: 18px 20px;
+    color: #355E3B;
+    font-size: 18px;
+    margin: 10px 0 6px 0;
+    animation: fadeInBox 0.4s ease-out;
+}
+.correct-box-title {
+    font-weight: bold;
+    font-size: 20px;
+    margin-bottom: 6px;
+}
+.correct-box-monster {
+    font-size: 28px;
+    margin-right: 6px;
+}
+
+/* XPがふわっと出るアニメーション風 */
+.xp-float {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background-color: #FFFBE6;
+    border: 1px solid #FFD666;
+    color: #996A00;
+    font-weight: bold;
+    animation: xpFloat 0.8s ease-out;
+}
+
+@keyframes fadeInBox {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1.0); }
+}
+
+@keyframes xpFloat {
+    from { opacity: 0; transform: translateY(8px); }
+    50%  { opacity: 1; }
+    to   { opacity: 0; transform: translateY(-8px); }
+}
+
+/* 次へ進む系のボタンを全体的に少し大きく＆押しやすく */
+.stButton > button {
+    font-size: 18px;
+    padding: 0.6rem 1.4rem;
+    border-radius: 999px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ---------- セッション状態の初期化 ----------
+if "page" not in st.session_state:
+    st.session_state["page"] = "home"
+
+if "xp" not in st.session_state:
+    st.session_state["xp"] = 0
+if "level" not in st.session_state:
+    st.session_state["level"] = 1
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
+if "last_login_date" not in st.session_state:
+    st.session_state["last_login_date"] = None
+if "login_bonus_given_today" not in st.session_state:
+    st.session_state["login_bonus_given_today"] = False
+
+# ----------ステージ1用----------
+if "stage1_index" not in st.session_state:
+    st.session_state["stage1_index"] = 0
+if "stage1_feedback" not in st.session_state:
+    st.session_state["stage1_feedback"] = ""
+if "stage1_step" not in st.session_state:
+    # 0: 写経1, 1: 選択肢, 2: 写経2
+    st.session_state["stage1_step"] = 0
+
+
+
+# STEP0（写経）が正解だったかどうか
+if "stage1_copy_correct" not in st.session_state:
+    st.session_state["stage1_copy_correct"] = False
+    
+# ✅ 直近の3択が正解だったかどうか
+if "stage1_last_answer_correct" not in st.session_state:
+    st.session_state["stage1_last_answer_correct"] = False
+
+# ✅ STEP2（もう一度書く）が正解だったかどうか
+if "stage1_rewrite_correct" not in st.session_state:
+    st.session_state["stage1_rewrite_correct"] = False
+
+
+# ----------ステージ2用----------
+if "stage2_index" not in st.session_state:
+    st.session_state["stage2_index"] = 0
+
+# ----------ステージ3用----------
+if "stage3_index" not in st.session_state:
+    st.session_state["stage3_index"] = 0
+
+# 🔁 復習フラグ
+if "stage1_review" not in st.session_state:
+    st.session_state["stage1_review"] = False
+if "stage2_review" not in st.session_state:
+    st.session_state["stage2_review"] = False
+if "stage3_review" not in st.session_state:
+    st.session_state["stage3_review"] = False
+
+# クリアフラグ
+if "stage1_cleared" not in st.session_state:
+    st.session_state["stage1_cleared"] = False
+if "stage2_cleared" not in st.session_state:
+    st.session_state["stage2_cleared"] = False
+if "stage3_cleared" not in st.session_state:
+    st.session_state["stage3_cleared"] = False
+
+
+# ---------- レベル計算 ----------
+def update_level():
+    st.session_state["level"] = max(1, st.session_state["xp"] // 50 + 1)
+
+# ---------- 正解表示のヘルパー関数 ----------
+def show_correct_feedback(message: str, xp_gain: int, monster_emoji: str = "👾"):
+    """
+    正解したときの共通UI＋XP加算。
+    ・大きな緑ボックス
+    ・モンスターの喜ぶアイコン
+    ・XP +◯ のポップ
+    """
+    # デバッグ表示（本番で邪魔ならあとで消してOK）
+    st.write("✅ DEBUG: show_correct_feedback が呼ばれました")
+
+    html = f"""
+    <div class="correct-box">
+        <div class="correct-box-title">
+            <span class="correct-box-monster">{monster_emoji}</span>
+            正解だよ！
+        </div>
+        <div>{message}</div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+    # XPポップ表示
+    st.markdown(f'<div class="xp-float">+{xp_gain} XP</div>', unsafe_allow_html=True)
+
+    # XPを加算してレベル更新
+    st.session_state["xp"] += xp_gain
+    update_level()
+
+
+# ---------- ログインボーナス ----------
+today_str = datetime.date.today().isoformat()
+if st.session_state["last_login_date"] != today_str:
+    st.session_state["last_login_date"] = today_str
+    st.session_state["login_bonus_given_today"] = False
+
+
+# ======================================================
+#  ページ共通ヘッダー
+# ======================================================
+st.markdown(
+    "<h1 style='text-align: center;'>🐣 ミナリアのPythonクエスト</h1>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "<h4 style='text-align: center; color:#8E6E95;'>C O C O M O A   K I N G D O M</h4>",
+    unsafe_allow_html=True,
+)
+
+
+# ======================================================
+#  ページ: home
+# ======================================================
+if st.session_state["page"] == "home":
+    autoplay_video("minaria.mp4")
+
+    st.markdown(
+        """
+    <div style='text-align:center; padding:10px; font-size:18px; color:#5F4C5B;'>
+    こんにちは、冒険者さん。<br>
+    きょうも少しだけ、いっしょに歩いてみましょうね。🌼
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+    <div style='text-align:center; font-size:16px; color:#6A5A78;'>
+    ここはココモア王国。<br>
+    学びが小さな魔法になる、ふんわり優しい世界なの。<br>
+    Pythonの力で、バグモンスターたちを癒してあげましょう。  
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
+    # 1行目：導入 ＋ ステージ1
+    row1_col1, row1_col2 = st.columns(2)
+    with row1_col1:
+        if st.button("🌱 冒険をはじめる"):
+            st.session_state["page"] = "intro"
+            st.rerun()
+    with row1_col2:
+        if st.button("🌱 ステージ1：ポヨンのはらっぱ"):
+            st.session_state["page"] = "stage1"
+            st.rerun()
+
+    # 2行目：ステージ2 ＋ ステージ3
+    row2_col1, row2_col2 = st.columns(2)
+    with row2_col1:
+        if st.button("🌿 ステージ2：もりねむの小道"):
+            st.session_state["page"] = "stage2"
+            st.rerun()
+    with row2_col2:
+        if st.button("🌀 ステージ3：くるくるループの塔"):
+            st.session_state["page"] = "stage3"
+            st.rerun()
+
+    st.markdown("---")
+
+    # マイページボタン
+    if st.button("📊 マイページ"):
+        st.session_state["page"] = "mypage"
+        st.rerun()
+
+    st.markdown(
+        "<div style='text-align:center; color:#A195A6; margin-top:20px;'>ココモア王国より 🌼</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ======================================================
+#  ページ: 導入シナリオ
+# ======================================================
+elif st.session_state["page"] == "intro":
+    st.image("minaria.png", use_container_width=True)
+    st.markdown(
+        "<h3 style='text-align:center; color:#6A5A78;'>ミナリアのことば</h3>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"<div style='background-color:#FDF5FF; padding:20px; border-radius:15px; "
+        f"border:1px solid #E4D3F3; color:#5F4C5B; font-size:16px;'>{INTRO_MESSAGE.replace(chr(10), '<br>')}</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("")
+    if st.button("👩‍🍼 ミナリアと話してみる"):
+        st.session_state["page"] = "chat"
+        st.rerun()
+
+    if st.button("🏠 タイトルにもどる"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+
+# ======================================================
+#  ページ: ステージ1 ポヨンのはらっぱ（写経＋3択＋写経）
+# ======================================================
+elif st.session_state["page"] == "stage1":
+    st.subheader("🌱 ステージ1：ポヨンのはらっぱ")
+
+    st.markdown(
+        """
+    ここは、ココモア王国の入口「ポヨンのはらっぱ」。  
+    地面がぽよんぽよんしていて、はじめての冒険者でも安心して歩ける場所です。  
+
+    ここでは **print** と **変数** の、いちばんやさしい魔法を練習するよ。  
+    1つの魔法ごとに「まねして書く → えらぶ → もう一度書く」という流れで進みます。
+    """
+    )
+
+    idx = st.session_state["stage1_index"]
+    step = st.session_state["stage1_step"]
+    
+    # ステージ進捗バー
+    total1 = len(STAGE1_QUESTIONS)
+    render_question_progress(idx, total1, label="ステージ1の進み具合：")
+
+
+    # すべて解き終わった場合
+    if idx >= len(STAGE1_QUESTIONS):
+        st.session_state["stage1_cleared"] = True
+
+        st.success("✨ すごい！ステージ1『ポヨンのはらっぱ』をクリアしたよ！")
+        st.info("ミナリア：最初の一歩を踏み出せたね。本当にえらいわ。次のステージも、あなたのペースでいきましょうね。")
+
+        # 🎞 ステージクリアアニメーション
+        autoplay_video("stage1_clear.mp4", width="70%")
+
+        if st.button("🔁 このステージを最初から復習する"):
+            st.session_state["stage1_index"] = 0
+            st.session_state["stage1_step"] = 0
+            st.session_state["stage1_review"] = True  # 復習モードON
+            st.rerun()
+
+    else:
+        q = STAGE1_QUESTIONS[idx]
+
+        # モンスター表示
+        st.markdown("---")
+        st.markdown(f"### 👾 きょうのバグモンスター：{q['monster_name']}")
+
+        img_path = q.get("monster_image")
+        if img_path and os.path.exists(img_path):
+            st.image(img_path, use_container_width=True)
+        else:
+            st.caption("※ まだイラストは準備中だけど、ここにモンスターの絵が入る予定だよ。")
+
+        st.markdown(q["monster_desc"])
+
+        # ------------ STEP 0：見本どおりに写す ------------
+        if step == 0:
+            st.markdown("---")
+            st.info(q["lesson_intro"])
+
+            st.markdown("#### ✏ まずは見本どおりに書いてみよう")
+            st.markdown("下のコードを、できるだけそのまままねして書いてみてね。")
+
+            st.code(q["copy_sample"], language="python")
+
+            code_input = st.text_area(
+                "ここにまねして書いてみてね：",
+                key=f"stage1_copy_{idx}",
+                height=80,
+            )
+
+            if st.button("このとおりに書けたかチェック", key=f"stage1_copy_btn_{idx}"):
+                if not code_input.strip():
+                    st.warning("なにも入力されていないみたい。少しだけでいいから、まねして書いてみよう。")
+                    st.session_state["stage1_copy_correct"] = False
+                    
+                elif normalize_code(code_input) == normalize_code(q["copy_sample"]):
+
+                    # ✅ 正解時：ユーザーが書いたコードを保存しておく
+                    st.session_state[f"stage1_last_copy_code_{idx}"] = code_input
+
+                    show_correct_feedback(
+                        message="ばっちり！見本どおりに書けたよ。次は同じ内容のクイズにチャレンジしよう。",
+                        xp_gain=10,
+                        monster_emoji="🐣",
+                    )
+                    st.session_state["stage1_copy_correct"] = True
+
+                else:
+                    st.error("うーん、少しだけちがうみたい。スペルやカッコの位置を、もう一度見比べてみようか。")
+                    st.session_state["stage1_copy_correct"] = False
+
+            # ✅ 写経に成功したときだけ「クイズへ進む」ボタンを出す
+            if st.session_state.get("stage1_copy_correct", False):
+                st.markdown("")
+                if st.button("▶ クイズに進む", key=f"stage1_to_quiz_{idx}"):
+                    st.session_state["stage1_step"] = 1
+                    st.session_state["stage1_copy_correct"] = False
+                    st.rerun()
+
+
+        # ------------ STEP 1：3択問題で理解チェック ------------
+        elif step == 1:
+            st.markdown("---")
+            st.markdown(f"**{q['text']}**")
+
+            # 💾 さっき写したコードを見られるようにする
+            last_code = st.session_state.get(f"stage1_last_copy_code_{idx}")
+            if last_code:
+                with st.expander("💾 さっき写したコードをもう一度見る"):
+                    st.code(last_code, language="python")
+            
+            choice_key = f"stage1_choice_{idx}"
+            user_choice = st.radio(
+                "正しいと思うものをえらんでね：",
+                q["choices"],
+                index=None,
+                key=choice_key,
+            )
+
+            # 「解答する」が押されたときの処理
+            if st.button("解答する", key=f"stage1_submit_{idx}"):
+                if user_choice is None:
+                    st.warning("どれか1つを選んでから、『解答する』ボタンを押してね。")
+                    st.session_state["stage1_last_answer_correct"] = False
+                else:
+                    correct_choice = q["choices"][q["correct_index"]]
+
+                    if user_choice == correct_choice:
+                        # 復習モードかどうかで分岐
+                        if st.session_state.get("stage1_review", False):
+                            st.success("⭕ 正解！バグモンスターが安心した顔でどこかへ帰っていったよ。（復習モードなのでXPは変わらないよ）")
+                            st.info(f"ミナリア：{q['explain']}")
+                        else:
+                            # ✅ 共通の正解UI＋XPアニメを使用
+                            show_correct_feedback(
+                                message="バグモンスターが、にこっと笑ってどこかへ帰っていったよ。",
+                                xp_gain=20,
+                                monster_emoji="🟢",  # 好きな絵文字に変えてOK
+                            )
+                            st.info(f"ミナリア：{q['explain']}")
+
+                        # ここではまだステップを進めない
+                        st.session_state["stage1_last_answer_correct"] = True
+
+                    else:
+                        st.error("❌ ざんねん…！でも大丈夫、ここで間違えるのはふつうのことだよ。")
+                        st.info(f"ミナリア：ヒントね。{q['hint']}")
+                        st.session_state["stage1_last_answer_correct"] = False
+
+            # ✅ 正解だったときだけ「次へ進む」ボタンを出す
+            if st.session_state.get("stage1_last_answer_correct", False):
+                st.markdown("")
+                if st.button("▶ 次へ進む", key=f"stage1_next_{idx}"):
+                    # 次は「もう一度書いてみよう」ステップへ
+                    st.session_state["stage1_step"] = 2
+                    st.session_state["stage1_last_answer_correct"] = False
+                    st.rerun()
+
+
+        # ------------ STEP 2：少し変えて、もう一度自分で書く ------------
+        elif step == 2:
+            st.markdown("---")
+            st.markdown("#### ✏ もう一度、自分の手で書いてみよう")
+            st.markdown(q["rewrite_prompt"])
+
+            # 💾 STEP0で写したコードを、ここからも見返せるようにする
+            last_code = st.session_state.get(f"stage1_last_copy_code_{idx}")
+            if last_code:
+                with st.expander("💾 さっき写したコードをもう一度見る"):
+                    st.code(last_code, language="python")
+            
+            rewrite_input = st.text_area(
+                "ここにコードを書いてみてね：",
+                key=f"stage1_rewrite_{idx}",
+                height=80,
+            )
+
+            if st.button("できたかチェック", key=f"stage1_rewrite_btn_{idx}"):
+                if not rewrite_input.strip():
+                    st.warning("まだ何も書かれていないみたい。1行だけでいいから、書いてみよう。")
+                    st.session_state["stage1_rewrite_correct"] = False
+
+                elif normalize_code(rewrite_input) == normalize_code(q["rewrite_answer"]):
+                    # ✅ 正解時の演出
+                    if st.session_state.get("stage1_review", False):
+                        # 復習モード：XPなし・やさしいメッセージだけ
+                        st.success("✨ いい感じ！同じ形で少し変えて書けたね。（復習モードなのでXPは変わらないよ）")
+                    else:
+                        # 本番モード：大きな緑枠＋XPポップ
+                        show_correct_feedback(
+                            message="すばらしい！形を思い出して、自分の手で書けたね。",
+                            xp_gain=15,          # XPはSTEP1より少し少なめにしてバランス調整
+                            monster_emoji="✨",
+                        )
+                    st.session_state["stage1_rewrite_correct"] = True
+
+                else:
+                    st.error("うーん、少しだけちがうみたい。さっきの見本を思い出して、形をもう一度見直してみよう。")
+                    st.session_state["stage1_rewrite_correct"] = False
+
+            # ✅ 正解しているときだけ「次の問題へ」ボタンを出す
+            if st.session_state.get("stage1_rewrite_correct", False):
+                st.markdown("")
+                if st.button("▶ 次の問題へ", key=f"stage1_next_question_{idx}"):
+                    # 次の問題へ
+                    st.session_state["stage1_index"] += 1
+                    st.session_state["stage1_step"] = 0
+                    st.session_state["stage1_rewrite_correct"] = False
+                    st.rerun()
+            
+    st.markdown("---")
+    if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
+        st.session_state["page"] = "chat"
+        st.rerun()
+
+    if st.button("🏠 タイトルにもどる"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+# ======================================================
+#  ページ: ステージ2 もりねむの小道（if文 3択＋モンスター）
+# ======================================================
+elif st.session_state["page"] == "stage2":
+    st.subheader("🌿 ステージ2：もりねむの小道")
+
+    st.markdown(
+        """
+    ここは、少しだけ奥に進んだ「もりねむの小道」。  
+    木々がゆらゆら揺れていて、「行こうかな、どうしようかな」と迷っているように見える場所です。  
+
+    ここでは **if文** の魔法を練習します。  
+    条件によって、やることを変えられる「分かれ道の魔法」だよ。  
+    3つの選択肢から、正しそうなものを選んでね。
+    """
+    )
+
+    idx2 = st.session_state["stage2_index"]
+    
+    # ステージ進捗バー
+    total2 = len(STAGE2_QUESTIONS)
+    render_question_progress(idx2, total2, label="ステージ2の進み具合：")
+
+
+    if idx2 >= len(STAGE2_QUESTIONS):
+        st.session_state["stage2_cleared"] = True
+
+        st.success("✨ ステージ2『もりねむの小道』をクリアしたよ！")
+        st.info("ミナリア：条件で動きを変える魔法、だいぶわかってきたみたいね。とっても素敵よ。")
+        
+        # 🎞 ステージ2クリアアニメーション
+        autoplay_video("stage2_clear.mp4", width="70%")
+
+        if st.button("🔁 このステージを最初から復習する"):
+            st.session_state["stage2_index"] = 0
+            st.session_state["stage2_review"] = True
+            st.rerun()
+
+    else:
+        q2 = STAGE2_QUESTIONS[idx2]
+
+        st.markdown("---")
+        st.markdown(f"### 👾 きょうのバグモンスター：{q2['monster_name']}")
+
+        img_path2 = q2.get("monster_image")
+        if img_path2 and os.path.exists(img_path2):
+            st.image(img_path2, use_container_width=True)
+        else:
+            st.caption("※ まだイラストは準備中だけど、ここにモンスターの絵が入る予定だよ。")
+
+        st.markdown(q2["monster_desc"])
+        st.markdown("---")
+
+        st.markdown(f"**{q2['text']}**")
+
+        choice_key2 = f"stage2_choice_{idx2}"
+        user_choice2 = st.radio(
+            "正しいと思うものをえらんでね：",
+            q2["choices"],
+            index=None,
+            key=choice_key2,
+        )
+
+        if st.button("解答する", key=f"stage2_submit_{idx2}"):
+            if user_choice2 is None:
+                st.warning("どれか1つを選んでから、『解答する』ボタンを押してね。")
+            else:
+                correct_choice2 = q2["choices"][q2["correct_index"]]
+
+                if user_choice2 == correct_choice2:
+                    if st.session_state.get("stage2_review", False):
+                        st.success("⭕ 正解！森のバグモンスターがほっとした顔で帰っていったよ。（復習モードなのでXPは変わらないよ）")
+                        st.info(f"ミナリア：{q2['explain']}")
+                    else:
+                        st.success("⭕ 正解！バグモンスターが、ほっとした顔で森の奥へ帰っていったよ。XP +25")
+                        st.info(f"ミナリア：{q2['explain']}")
+                        st.session_state["xp"] += 25
+                        update_level()
+
+                    st.session_state["stage2_index"] += 1
+                    st.rerun()
+                else:
+                    st.error("❌ ざんねん…！でも大丈夫、ここで迷うのは当たり前なの。")
+                    st.info(f"ミナリア：ヒントね。{q2['hint']}")
+
+    st.markdown("---")
+    if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
+        st.session_state["page"] = "chat"
+        st.rerun()
+
+    if st.button("🏠 タイトルにもどる"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+
+# ======================================================
+#  ページ: ステージ3 くるくるループの塔（for文 3択＋モンスター）
+# ======================================================
+elif st.session_state["page"] == "stage3":
+    st.subheader("🌀 ステージ3：くるくるループの塔")
+
+    st.markdown(
+        """
+    ここは、同じ階段をぐるぐる回ってしまう「くるくるループの塔」。  
+    まよっているバグモンスターたちに、**for文** の魔法で「何回くり返すか」を教えてあげよう。  
+
+    3つの選択肢から、正しそうなコードを選んでね。
+    """
+    )
+
+    idx3 = st.session_state["stage3_index"]
+    
+    # ステージ進捗バー
+    total3 = len(STAGE3_QUESTIONS)
+    render_question_progress(idx3, total3, label="ステージ3の進み具合：")
+
+
+    if idx3 >= len(STAGE3_QUESTIONS):
+        st.session_state["stage3_cleared"] = True
+
+        st.success("✨ ステージ3『くるくるループの塔』をクリアしたよ！")
+        st.info("ミナリア：くり返しの魔法まで身についたなんて、本当にすごいわ。これで基礎の魔法はばっちりね。")
+        
+        # 🎞 ステージ3クリアアニメーション
+        autoplay_video("stage3_clear.mp4", width="70%")
+
+        if st.button("🔁 このステージを最初から復習する"):
+            st.session_state["stage3_index"] = 0
+            st.session_state["stage3_review"] = True
+            st.rerun()
+
+    else:
+        q3 = STAGE3_QUESTIONS[idx3]
+
+        st.markdown("---")
+        st.markdown(f"### 👾 きょうのバグモンスター：{q3['monster_name']}")
+
+        img_path3 = q3.get("monster_image")
+        if img_path3 and os.path.exists(img_path3):
+            st.image(img_path3, use_container_width=True)
+        else:
+            st.caption("※ まだイラストは準備中だけど、ここにモンスターの絵が入る予定だよ。")
+
+        st.markdown(q3["monster_desc"])
+        st.markdown("---")
+
+        st.markdown(f"**{q3['text']}**")
+
+        choice_key3 = f"stage3_choice_{idx3}"
+        user_choice3 = st.radio(
+            "正しいと思うものをえらんでね：",
+            q3["choices"],
+            index=None,
+            key=choice_key3,
+        )
+
+        if st.button("解答する", key=f"stage3_submit_{idx3}"):
+            if user_choice3 is None:
+                st.warning("どれか1つを選んでから、『解答する』ボタンを押してね。")
+            else:
+                correct_choice3 = q3["choices"][q3["correct_index"]]
+
+                if user_choice3 == correct_choice3:
+                    if st.session_state.get("stage3_review", False):
+                        st.success("⭕ 正解！塔の階段をスイスイのぼっていけるようになったよ。（復習モードなのでXPは変わらないよ）")
+                        st.info(f"ミナリア：{q3['explain']}")
+                    else:
+                        st.success("⭕ 正解！塔の階段がまっすぐにつながって、バグモンスターがうれしそうに上へ進んでいったよ。XP +30")
+                        st.info(f"ミナリア：{q3['explain']}")
+                        st.session_state["xp"] += 30
+                        update_level()
+
+                    st.session_state["stage3_index"] += 1
+                    st.rerun()
+                else:
+                    st.error("❌ ざんねん…！でも大丈夫、くり返しは少しずつ慣れていけばいいのよ。")
+                    st.info(f"ミナリア：ヒントね。{q3['hint']}")
+
+    st.markdown("---")
+    if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
+        st.session_state["page"] = "chat"
+        st.rerun()
+
+    if st.button("🏠 タイトルにもどる"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+
+# ======================================================
+#  ページ: チャット
+# ======================================================
+elif st.session_state["page"] == "chat":
+    with st.sidebar:
+        st.header("📊 冒険者ステータス")
+        st.write(f"レベル：**{st.session_state['level']}**")
+        st.write(f"経験値（XP）：**{st.session_state['xp']}**")
+
+        if not st.session_state["login_bonus_given_today"]:
+            st.info("🎁 きょうのログインボーナスがあるよ。「ログインボーナスちょうだい」と話しかけてみてね。")
+
+        if st.button("🌱 ステージ1で練習する"):
+            st.session_state["page"] = "stage1"
+            st.rerun()
+
+    st.subheader("💬 ミナリアとの会話")
+
+    user_input = st.text_input("ミナリアに話しかけてみよう：", "")
+
+    if st.button("送信") and user_input.strip():
+        try:
+            response = client.responses.create(
+                model="gpt-4o-mini",
+                input=[
+                    {"role": "system", "content": MINARIA_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_input},
+                ],
+            )
+            reply = response.output_text
+
+            st.session_state["messages"].append(("あなた", user_input))
+            st.session_state["messages"].append(("ミナリア", reply))
+
+            gained_xp = 10
+
+            if (("ログインボーナス" in user_input) or ("ボーナス" in user_input)) and not st.session_state[
+                "login_bonus_given_today"
+            ]:
+                bonus_item = random.choice(
+                    [
+                        ("ミニポーション", 5),
+                        ("ラッキーキャンディ", 10),
+                        ("ふわふわ毛玉", 8),
+                    ]
+                )
+                item_name, item_xp = bonus_item
+                gained_xp += item_xp
+                st.session_state["login_bonus_given_today"] = True
+                st.success(f"🎁 ミナリアから『{item_name}』をもらった！ 追加で {item_xp} XP ゲット！")
+
+            st.session_state["xp"] += gained_xp
+            update_level()
+
+        except Exception as e:
+            reply = f"エラーが起きちゃったみたい…ごめんね💦 詳細：{e}"
+            st.session_state["messages"].append(("あなた", user_input))
+            st.session_state["messages"].append(("ミナリア", reply))
+
+    st.markdown("---")
+    st.subheader("📜 会話ログ")
+    if not st.session_state["messages"]:
+        st.write("まだミナリアとの会話ははじまっていません。なにか話しかけてみてね 🌼")
+    else:
+        for speaker, text in st.session_state["messages"]:
+            if speaker == "あなた":
+                st.markdown(f"**🧑 あなた：** {text}")
+            else:
+                st.markdown(f"**👩‍🍼 ミナリア：** {text}")
+
+    if st.button("🏠 タイトルにもどる"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+
+# ======================================================
+#  ページ: マイページ（進捗ダッシュボード）
+# ======================================================
+elif st.session_state["page"] == "mypage":
+    st.subheader("📊 冒険者マイページ")
+
+    st.markdown("### 🧑‍🚀 冒険者ステータス")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown(f"**レベル：{st.session_state['level']}**")
+    with col_b:
+        st.markdown(f"**経験値（XP）：{st.session_state['xp']}**")
+
+    st.markdown("---")
+
+    total_stage1 = len(STAGE1_QUESTIONS)
+    if st.session_state.get("stage1_cleared", False):
+        done_stage1 = total_stage1
+    else:
+        done_stage1 = st.session_state.get("stage1_index", 0)
+
+    total_stage2 = len(STAGE2_QUESTIONS)
+    if st.session_state.get("stage2_cleared", False):
+        done_stage2 = total_stage2
+    else:
+        done_stage2 = st.session_state.get("stage2_index", 0)
+
+    total_stage3 = len(STAGE3_QUESTIONS)
+    if st.session_state.get("stage3_cleared", False):
+        done_stage3 = total_stage3
+    else:
+        done_stage3 = st.session_state.get("stage3_index", 0)
+
+    def stage_badge(done, total):
+        if done >= total:
+            return "💚 <b>CLEAR!</b>", "#B7EB8F"
+        elif done == 0:
+            return "⬜ <b>未スタート</b>", "#C9B4F9"
+        else:
+            return "🟡 <b>進行中…</b>", "#FFF6DA"
+
+
+# ======================================================
+#  ステージ進捗
+# ======================================================
+    def stage_card(title, done, total):
+        badge_text, bg_color = stage_badge(done, total)
+        ratio = min(done / total, 1.0)
+
+        st.markdown(
+            f"""
+            <div style="
+                background-color:{bg_color};
+                padding:15px;
+                border-radius:15px;
+                border:1px solid #DDD;
+                margin-bottom:12px;
+            ">
+                <div style="font-size:20px; font-weight:bold; color:#5F4C5B;">{title}</div>
+                <div style="margin:5px 0; font-size:16px; color:#5F4C5B;">
+                    進捗：<b>{done} / {total}</b> 問　
+                    {badge_text}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.progress(ratio)
+
+    st.markdown("### 🗺 ステージ進捗")
+
+    stage_card("🌱 ステージ1：ポヨンのはらっぱ", done_stage1, total_stage1)
+    stage_card("🌿 ステージ2：もりねむの小道", done_stage2, total_stage2)
+    stage_card("🌀 ステージ3：くるくるループの塔", done_stage3, total_stage3)
+
+    st.markdown("---")
+
+    st.markdown("### 🎖 次のおすすめ行動")
+    if done_stage1 < total_stage1:
+        st.write("🌱 まずは **ステージ1** を終わらせてみよう。print と 変数の魔法を完成させようね。")
+    elif done_stage2 < total_stage2:
+        st.write("🌿 次は **ステージ2** だよ。条件分岐の if 文をいっしょに練習しよう。")
+    elif done_stage3 < total_stage3:
+        st.write("🌀 ここまで来たら **ステージ3** にチャレンジ！for 文のくり返しが使えると、一気にできることが増えるよ。")
+    else:
+        st.success("✨ すごい！今あるステージはぜんぶ CLEAR しているよ！Python基礎の魔法はばっちり。")
+
+    st.markdown("---")
+
+    col_back1, col_back2 = st.columns(2)
+    with col_back1:
+        if st.button("🏠 タイトルにもどる"):
+            st.session_state["page"] = "home"
+            st.rerun()
+    with col_back2:
+        if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
+            st.session_state["page"] = "chat"
+            st.rerun()
