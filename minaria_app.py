@@ -4,9 +4,13 @@ import datetime
 import random
 import os
 import base64  # 動画
+import uuid
+
+from streamlit_js_eval import streamlit_js_eval
 
 # ---------- OpenAI クライアント ----------
 # APIキーは環境変数「OPENAI_API_KEY」から読み取る
+
 api_key = os.getenv("OPENAI_API_KEY")
 
 if not api_key:
@@ -41,7 +45,66 @@ def render_question_progress(current_index: int, total: int, label: str = "い�
     current = min(current_index + 1, total)
     st.markdown(f"📘 {label} {current} / {total} 問目")
     st.progress(current / total)
-    
+
+# ======================================================
+#  XP保存関数
+# ======================================================
+def save_to_localstorage(key, value):
+    js = f"""
+    <script>
+        localStorage.setItem("{key}", "{value}");
+    </script>
+    """
+    st.markdown(js, unsafe_allow_html=True)
+
+
+# ======================================================
+#  XPご褒美：称号システム
+# ======================================================
+
+TITLE_TIERS = [
+    {"xp": 0,   "name": "🌙 星空を見上げる人"},
+    {"xp": 50,  "name": "🌱 ポヨン草原のさんぽびと"},
+    {"xp": 120, "name": "💧 ちいさなバグヒーラー"},
+    {"xp": 250, "name": "🕊 ミナリアのとなり歩き"},
+    {"xp": 400, "name": "✨ 森を照らすあかり"},
+    {"xp": 600, "name": "🌈 ココモア王国のまもりびと"},
+]
+
+def get_title_by_xp(xp: int):
+    """現在XPから、今の称号と次の称号、進み具合を返す"""
+    current = TITLE_TIERS[0]
+    next_tier = None
+
+    for tier in TITLE_TIERS:
+        if xp >= tier["xp"]:
+            current = tier
+        else:
+            next_tier = tier
+            break
+
+    # 次の称号がない = カンスト
+    if not next_tier:
+        return {
+            "current_name": current["name"],
+            "current_xp": xp,
+            "next_name": None,
+            "need_xp": 0,
+            "progress_ratio": 1.0,
+        }
+
+    need = max(next_tier["xp"] - xp, 0)
+    ratio = (xp - current["xp"]) / (next_tier["xp"] - current["xp"])
+
+    return {
+        "current_name": current["name"],
+        "current_xp": xp,
+        "next_name": next_tier["name"],
+        "need_xp": need,
+        "progress_ratio": max(0.0, min(ratio, 1.0)),
+    }
+
+
 # ---------- ミナリアの人格プロンプト ----------
 MINARIA_SYSTEM_PROMPT = """
 あなたはココモア王国に住む「ミナリア」という名前の、優しくて包容力のあるお母さんキャラの先生です。
@@ -342,18 +405,52 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 # ---------- セッション状態の初期化 ----------
+
+# ページ
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
 
+# ----------------------------------------------------
+# XP を localStorage から読み込む（最初の1回だけ）
+# ----------------------------------------------------
+if "xp_loaded" not in st.session_state:
+    saved_xp = streamlit_js_eval(
+        js_expressions="localStorage.getItem('xp')",
+        key="load_xp"
+    )
+
+    # XP 初期化（安全変換）
+    try:
+        if saved_xp is None or saved_xp == "":
+            st.session_state["xp"] = 0
+        else:
+            st.session_state["xp"] = int(saved_xp)
+    except:
+        st.session_state["xp"] = 0
+
+    st.session_state["xp_loaded"] = True
+
+# 念のため：xp がまだ無ければ 0 で作っておく
 if "xp" not in st.session_state:
     st.session_state["xp"] = 0
+
+
+# 前回XP（称号判定用）
+if "last_xp" not in st.session_state:
+    st.session_state["last_xp"] = st.session_state["xp"]
+
+# レベルなど他の状態
 if "level" not in st.session_state:
     st.session_state["level"] = 1
+
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
+
 if "last_login_date" not in st.session_state:
     st.session_state["last_login_date"] = None
+
 if "login_bonus_given_today" not in st.session_state:
     st.session_state["login_bonus_given_today"] = False
 
@@ -418,8 +515,6 @@ def show_correct_feedback(message: str, xp_gain: int, monster_emoji: str = "👾
     ・モンスターの喜ぶアイコン
     ・XP +◯ のポップ
     """
-    # デバッグ表示（本番で邪魔ならあとで消してOK）
-    st.write("✅ DEBUG: show_correct_feedback が呼ばれました")
 
     html = f"""
     <div class="correct-box">
@@ -435,9 +530,31 @@ def show_correct_feedback(message: str, xp_gain: int, monster_emoji: str = "👾
     # XPポップ表示
     st.markdown(f'<div class="xp-float">+{xp_gain} XP</div>', unsafe_allow_html=True)
 
-    # XPを加算してレベル更新
+    # -----------------------------------------
+    # XP加算 ＋ ご褒美（称号チェック）
+    # -----------------------------------------
+
+    # XP加算前の状態を保存
+    old_xp = st.session_state["xp"]
+    old_title = get_title_by_xp(old_xp)["current_name"]
+
+    # XP加算
     st.session_state["xp"] += xp_gain
+
+    # localStorage に保存
+    save_to_localstorage("xp", st.session_state["xp"])
+
+    # レベル更新（既存処理）
     update_level()
+
+    # NEW称号チェック
+    new_title = get_title_by_xp(st.session_state["xp"])["current_name"]
+    if new_title != old_title:
+        st.success(f"🌟 NEW称号 解放！ {new_title}")
+
+    # 今回のXPを last_xp として保存
+    st.session_state["last_xp"] = st.session_state["xp"]
+
 
 
 # ---------- ログインボーナス ----------
@@ -458,8 +575,7 @@ st.markdown(
     "<h4 style='text-align: center; color:#8E6E95;'>C O C O M O A   K I N G D O M</h4>",
     unsafe_allow_html=True,
 )
-
-
+    
 # ======================================================
 #  ページ: home
 # ======================================================
@@ -847,6 +963,7 @@ elif st.session_state["page"] == "stage2":
                         st.success("⭕ 正解！バグモンスターが、ほっとした顔で森の奥へ帰っていったよ。XP +25")
                         st.info(f"ミナリア：{q2['explain']}")
                         st.session_state["xp"] += 25
+                        save_to_localstorage("xp", st.session_state["xp"])
                         update_level()
 
                     st.session_state["stage2_index"] += 1
@@ -940,6 +1057,7 @@ elif st.session_state["page"] == "stage3":
                         st.success("⭕ 正解！塔の階段がまっすぐにつながって、バグモンスターがうれしそうに上へ進んでいったよ。XP +30")
                         st.info(f"ミナリア：{q3['explain']}")
                         st.session_state["xp"] += 30
+                        save_to_localstorage("xp", st.session_state["xp"])
                         update_level()
 
                     st.session_state["stage3_index"] += 1
@@ -1010,6 +1128,7 @@ elif st.session_state["page"] == "chat":
                 st.success(f"🎁 ミナリアから『{item_name}』をもらった！ 追加で {item_xp} XP ゲット！")
 
             st.session_state["xp"] += gained_xp
+            save_to_localstorage("xp", st.session_state["xp"])
             update_level()
 
         except Exception as e:
@@ -1040,6 +1159,45 @@ elif st.session_state["page"] == "mypage":
     st.subheader("📊 冒険者マイページ")
 
     st.markdown("### 🧑‍🚀 冒険者ステータス")
+
+    # -------------------------
+    # XP 称号システム（表示）
+    # -------------------------
+    xp = st.session_state.get("xp", 0)
+    title_info = get_title_by_xp(xp)
+
+    # 現在の称号バッジ
+    st.markdown(
+        f"""
+        <div style="
+            padding:12px;
+            border-radius:12px;
+            border:1px solid #DDC7F7;
+            background-color:#F9F5FF;
+            margin-top:10px;
+            margin-bottom:10px;
+        ">
+            <div style="font-size:18px; color:#5F4C5B; font-weight:bold;">
+                🏅 あなたの今の称号：{title_info["current_name"]}
+            </div>
+            <div style="font-size:14px; color:#7A6A80; margin-top:4px;">
+                総XP：<b>{xp}</b>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # 次の称号がある場合のみ
+    if title_info["next_name"]:
+        st.markdown(
+            f"次の称号 <b>{title_info['next_name']}</b> まで、あと <b>{title_info['need_xp']}</b> XP",
+            unsafe_allow_html=True,
+        )
+        st.progress(title_info["progress_ratio"])
+    else:
+        st.success("🎉 あなたは最高ランク「ココモア王国のまもりびと」に到達しました！")
+
 
     col_a, col_b = st.columns(2)
     with col_a:
