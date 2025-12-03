@@ -405,15 +405,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
 # ---------- セッション状態の初期化 ----------
 
-# ページ
+# ページ（最初の1回だけ設定）
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
 
 # ----------------------------------------------------
-# XP を localStorage から読み込む（最初の1回だけ）
+# XP を localStorage から読み込む（最初の1回のみ）
 # ----------------------------------------------------
 if "xp_loaded" not in st.session_state:
     saved_xp = streamlit_js_eval(
@@ -432,9 +431,10 @@ if "xp_loaded" not in st.session_state:
 
     st.session_state["xp_loaded"] = True
 
-# 念のため：xp がまだ無ければ 0 で作っておく
+# XP がまだ無ければ 0
 if "xp" not in st.session_state:
     st.session_state["xp"] = 0
+
 
 
 # 前回XP（称号判定用）
@@ -538,11 +538,15 @@ def show_correct_feedback(message: str, xp_gain: int, monster_emoji: str = "👾
     old_xp = st.session_state["xp"]
     old_title = get_title_by_xp(old_xp)["current_name"]
 
-    # XP加算
     st.session_state["xp"] += xp_gain
+    update_level()
 
-    # localStorage に保存
-    save_to_localstorage("xp", st.session_state["xp"])
+    # === XPをブラウザへ保存 ===
+    streamlit_js_eval(
+        js_expressions=f"localStorage.setItem('xp', '{st.session_state['xp']}')",
+        key=f"save_xp_{uuid.uuid4()}"
+)
+
 
     # レベル更新（既存処理）
     update_level()
