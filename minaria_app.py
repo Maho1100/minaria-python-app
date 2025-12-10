@@ -8,9 +8,8 @@ import uuid
 import json  # ★ 保存機能　あとでデータベースにする予定
 import pathlib #音
 import base64
-from pydub import AudioSegment #読み上げ
-from pydub.playback import play #読み上げ
-import io #読み上げ
+
+
 
 # ---------- OpenAI クライアント ----------
 # APIキーは環境変数「OPENAI_API_KEY」から読み取る
