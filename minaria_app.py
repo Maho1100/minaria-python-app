@@ -5,8 +5,13 @@ import random
 import os
 import base64  # 動画
 import uuid
-
-from streamlit_js_eval import streamlit_js_eval
+import json  # ★ 保存機能　あとでデータベースにする予定
+import pathlib #音
+import base64
+from io import BytesIO #読み上げ
+from pydub import AudioSegment #読み上げ
+from pydub.playback import play #読み上げ
+import io #読み上げ
 
 # ---------- OpenAI クライアント ----------
 # APIキーは環境変数「OPENAI_API_KEY」から読み取る
@@ -33,6 +38,160 @@ def autoplay_video(path: str, width: str = "70%"):
     </div>
     """
     st.markdown(video_html, unsafe_allow_html=True)
+# ======================================================
+#  ミナリアボイス関数
+# ======================================================
+
+def speak_minaria(text: str):
+    try:
+        # ① ミナリア風のセリフに変換
+        rewrite = client.responses.create(
+            model="gpt-4o-mini",
+            input=[
+                {"role": "system", "content": "あなたは優しく包容力のある女性『ミナリア』として話してください。短く柔らかく言い換えてください。"},
+                {"role": "user", "content": text}
+            ]
+        ).output_text
+
+        # ② TTS で音声化（ここには説明文を渡さない）
+        response = client.audio.speech.create(
+            model="gpt-4o-mini-tts",
+            voice="alloy",
+            input=rewrite
+        )
+
+        audio_bytes = response.read() if hasattr(response, "read") else response
+        autoplay_audio(audio_bytes, mime="audio/mp3")
+
+    except Exception as e:
+        st.warning(f"音声生成でエラーが発生しました: {e}")
+
+
+# ======================================================
+#  自動音声の関数
+# ======================================================
+def autoplay_audio(audio_bytes: bytes, mime: str = "audio/mp3"):
+    """
+    再生ボタンなしで自動再生を試みるためのHTMLを埋め込む。
+    ※ブラウザの自動再生ポリシーによりブロックされる場合あり
+    """
+    b64 = base64.b64encode(audio_bytes).decode("utf-8")
+    html = f"""
+    <audio autoplay>
+        <source src="data:{mime};base64,{b64}" type="{mime}">
+        Your browser does not support the audio element.
+    </audio>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
+# ======================================================
+#  音の関数
+# ======================================================
+BASE_DIR = pathlib.Path(__file__).resolve().parent
+
+def play_sound(path: str):
+    sound_path = (BASE_DIR / path).resolve()
+
+    if not sound_path.exists():
+        st.warning(f"音声ファイルが見つかりません: {sound_path}")
+        return
+
+    with open(sound_path, "rb") as f:
+        audio_bytes = f.read()
+
+    b64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+    st.markdown(f"""
+        <audio id="minaria_sound" src="data:audio/mp3;base64,{b64}"></audio>
+        <script>
+            // Streamlit が DOM を描画し終わった後に確実に実行
+            window.addEventListener("load", () => {{
+                setTimeout(() => {{
+                    const audio = document.getElementById("minaria_sound");
+                    if (audio) audio.play();
+                }}, 150);  // ← 150ms 遅延が安定動作のコツ
+            }});
+        </script>
+    """, unsafe_allow_html=True)
+
+
+    # 再生ボタンなし・自動再生を試みる
+    autoplay_audio(audio_bytes, mime="audio/mp3")
+
+# ======================================================
+#  BGMの関数（ユーザー指定音量つき）
+# ======================================================
+def autoplay_bgm(path: str, volume: float = 0.5):
+    """ローカルの mp3 を自動再生でループさせる BGM プレーヤー"""
+    sound_path = (BASE_DIR / path).resolve()
+
+    if not sound_path.exists():
+        st.warning(f"音声ファイルが見つかりません: {sound_path}")
+        return
+
+    with open(sound_path, "rb") as f:
+        data = base64.b64encode(f.read()).decode("utf-8")
+
+    # volume は 0.0〜1.0 にクリップ
+    vol = max(0.0, min(float(volume), 1.0))
+
+    audio_html = f"""
+    <audio id="bgm_player" autoplay loop>
+        <source src="data:audio/mp3;base64,{data}" type="audio/mp3">
+    </audio>
+
+    <script>
+        const bgm = document.getElementById("bgm_player");
+        if (bgm) {{
+            bgm.volume = {vol:.2f};
+        }}
+    </script>
+    """
+    st.markdown(audio_html, unsafe_allow_html=True)
+
+# ======================================================
+#  XPファイル保存用の関数
+# ======================================================
+def autoplay_video(path: str, width: str = "70%"):
+    """ローカルの mp4 を自動再生で表示するヘルパー"""
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode("utf-8")
+
+    video_html = f"""
+    <div style='text-align: center;'>
+        <video width="{width}" autoplay loop muted playsinline>
+            <source src="data:video/mp4;base64,{data}" type="video/mp4">
+        </video>
+    </div>
+    """
+    st.markdown(video_html, unsafe_allow_html=True)
+
+
+# ======================================================
+#  XP 永続化：ローカルの JSON ファイルに保存
+# ======================================================
+
+DATA_FILE = "xp_data.json"
+
+def load_xp() -> int:
+    """xp_data.json から XP を読み込む。なければ 0。"""
+    if not os.path.exists(DATA_FILE):
+        return 0
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return int(data.get("xp", 0))
+    except Exception:
+        return 0
+
+def save_xp(xp: int) -> None:
+    """XP を xp_data.json に保存する。"""
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump({"xp": int(xp)}, f)
+    except Exception as e:
+        st.error(f"XP の保存に失敗しました: {e}")
 
 # ======================================================
 #  ステージ内で「いま何問目か」を表示するヘルパー
@@ -45,17 +204,6 @@ def render_question_progress(current_index: int, total: int, label: str = "い�
     current = min(current_index + 1, total)
     st.markdown(f"📘 {label} {current} / {total} 問目")
     st.progress(current / total)
-
-# ======================================================
-#  XP保存関数
-# ======================================================
-def save_to_localstorage(key, value):
-    js = f"""
-    <script>
-        localStorage.setItem("{key}", "{value}");
-    </script>
-    """
-    st.markdown(js, unsafe_allow_html=True)
 
 
 # ======================================================
@@ -181,6 +329,7 @@ STAGE1_QUESTIONS = [
         "hint": "画面に表示したいときは、print( ) の中に文字を入れるよ。",
         "explain": 'Pythonでは、画面に文字を出すときは print("文字") を使います。',
         "monster_name": "プリントスライム",
+        "voice_file": "sounds/minaria_q1.mp3",
         "monster_desc": "しゃべりたいのに、どんな魔法を使えばいいかわからず、もごもごしているスライム。print() の呪文で、心の中の言葉を画面に出してあげると安心するよ。",
         "monster_image": "monster_print_slime.png",
     },
@@ -214,6 +363,7 @@ STAGE1_QUESTIONS = [
         "hint": "= は「右のものを左に入れる」という意味だよ。",
         "explain": '変数に値を入れるときは、name == ではなく name = "Minaria" のように = を使います。',
         "monster_name": "ネームヒヨコ",
+        "voice_file": "sounds/minaria_q2.mp3",
         "monster_desc": "自分の名前を忘れがちな、ぽやぽやヒヨコ。name = \"Minaria\" のように、= の魔法で“名前を入れてあげる”と元気になるんだ。",
         "monster_image": "monster_name_chick.png",
     },
@@ -243,6 +393,7 @@ STAGE1_QUESTIONS = [
         "hint": "計算そのものを print( ) のカッコの中に入れてみよう。",
         "explain": 'print(3 + 5) のように、計算式をそのまま print の中に書くと、結果の 8 が表示されます。',
         "monster_name": "サンムクラウド",
+        "voice_file": "sounds/minaria_q3.mp3",
         "monster_desc": "数字の雲を集めるのが大好きな雲のモンスター。print(3 + 5) の魔法で雲をまとめてあげると、ふわっと笑うよ。",
         "monster_image": "monster_sum_cloud.png",
     },
@@ -344,6 +495,19 @@ def normalize_code(code: str) -> str:
     """空白をなくし、シングルクォートをダブルクォートにそろえる簡易正規化"""
     return code.replace(" ", "").replace("'", '"').strip()
 
+def is_valid_name_assignment(code: str) -> bool:
+    """
+    「name という変数に、ダブルクォートの文字列を代入しているか？」だけを見る
+    例: name = "Cocomoa", name="Minaria" などは OK
+    """
+    norm = normalize_code(code)  # 空白削除＆' → " に統一
+    if not norm.startswith('name="'):
+        return False
+    if not norm.endswith('"'):
+        return False
+    # name=""（中身空）は一応NGにしたければここで判定
+    inner = norm[len('name="'):-1]
+    return len(inner) > 0
 
 # ---------- Streamlit 基本設定 ----------
 st.set_page_config(page_title="ミナリアのPythonクエスト", page_icon="🐣")
@@ -411,57 +575,46 @@ st.markdown("""
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
 
-# ----------------------------------------------------
-# XP を localStorage から読み込む（最初の1回のみ）
-# ----------------------------------------------------
-if "xp_loaded" not in st.session_state:
-    saved_xp = streamlit_js_eval(
-        js_expressions="localStorage.getItem('xp')",
-        key="load_xp"
-    )
-
-    # XP 初期化（安全変換）
-    try:
-        if saved_xp is None or saved_xp == "":
-            st.session_state["xp"] = 0
-        else:
-            st.session_state["xp"] = int(saved_xp)
-    except:
-        st.session_state["xp"] = 0
-
-    st.session_state["xp_loaded"] = True
-
-# XP がまだ無ければ 0
+# XP：最初の1回だけファイルから読み込む
 if "xp" not in st.session_state:
-    st.session_state["xp"] = 0
+    st.session_state["xp"] = load_xp()
+    
+ # BGM音量（0.0〜1.0）
+if "bgm_volume" not in st.session_state:
+    st.session_state["bgm_volume"] = 0.1  # デフォルト50%
 
 
-
+# ----------------------------------------------------
+# その他のセッション状態初期化
+# ----------------------------------------------------
 # 前回XP（称号判定用）
 if "last_xp" not in st.session_state:
     st.session_state["last_xp"] = st.session_state["xp"]
 
-# レベルなど他の状態
+# レベル状態
 if "level" not in st.session_state:
     st.session_state["level"] = 1
 
+# チャットメッセージ
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
+# ログインボーナス関連
 if "last_login_date" not in st.session_state:
     st.session_state["last_login_date"] = None
 
 if "login_bonus_given_today" not in st.session_state:
     st.session_state["login_bonus_given_today"] = False
 
-# ----------ステージ1用----------
+
+# ステージ1用 ----------
 if "stage1_index" not in st.session_state:
     st.session_state["stage1_index"] = 0
 if "stage1_feedback" not in st.session_state:
     st.session_state["stage1_feedback"] = ""
 if "stage1_step" not in st.session_state:
-    # 0: 写経1, 1: 選択肢, 2: 写経2
-    st.session_state["stage1_step"] = 0
+    # ⭐ -1 を導入画面として追加
+    st.session_state["stage1_step"] = -1
 
 
 
@@ -529,6 +682,8 @@ def show_correct_feedback(message: str, xp_gain: int, monster_emoji: str = "👾
 
     # XPポップ表示
     st.markdown(f'<div class="xp-float">+{xp_gain} XP</div>', unsafe_allow_html=True)
+    # ここでクリア音を鳴らす
+    play_sound("sounds/stage_clear.mp3")
 
     # -----------------------------------------
     # XP加算 ＋ ご褒美（称号チェック）
@@ -538,23 +693,18 @@ def show_correct_feedback(message: str, xp_gain: int, monster_emoji: str = "👾
     old_xp = st.session_state["xp"]
     old_title = get_title_by_xp(old_xp)["current_name"]
 
+    # XP加算
     st.session_state["xp"] += xp_gain
     update_level()
 
-    # === XPをブラウザへ保存 ===
-    streamlit_js_eval(
-        js_expressions=f"localStorage.setItem('xp', '{st.session_state['xp']}')",
-        key=f"save_xp_{uuid.uuid4()}"
-)
-
-
-    # レベル更新（既存処理）
-    update_level()
+    # === XPをブラウザへ保存（統一関数） ===
+    save_xp(st.session_state["xp"])
 
     # NEW称号チェック
     new_title = get_title_by_xp(st.session_state["xp"])["current_name"]
     if new_title != old_title:
         st.success(f"🌟 NEW称号 解放！ {new_title}")
+        play_sound("sounds/title_fanfare.mp3")
 
     # 今回のXPを last_xp として保存
     st.session_state["last_xp"] = st.session_state["xp"]
@@ -579,7 +729,8 @@ st.markdown(
     "<h4 style='text-align: center; color:#8E6E95;'>C O C O M O A   K I N G D O M</h4>",
     unsafe_allow_html=True,
 )
-    
+                   
+
 # ======================================================
 #  ページ: home
 # ======================================================
@@ -609,6 +760,9 @@ if st.session_state["page"] == "home":
 
     st.markdown("---")
 
+        # 🎵 BGM 固定再生（音量は関数側のデフォルト or ファイル側で調整）
+    autoplay_bgm("sounds/yurukawa_top_loop_v2.mp3")
+
     # 1行目：導入 ＋ ステージ1
     row1_col1, row1_col2 = st.columns(2)
     with row1_col1:
@@ -632,6 +786,7 @@ if st.session_state["page"] == "home":
             st.rerun()
 
     st.markdown("---")
+    
 
     # マイページボタン
     if st.button("📊 マイページ"):
@@ -642,6 +797,7 @@ if st.session_state["page"] == "home":
         "<div style='text-align:center; color:#A195A6; margin-top:20px;'>ココモア王国より 🌼</div>",
         unsafe_allow_html=True,
     )
+
 
 
 # ======================================================
@@ -674,213 +830,259 @@ elif st.session_state["page"] == "intro":
 #  ページ: ステージ1 ポヨンのはらっぱ（写経＋3択＋写経）
 # ======================================================
 elif st.session_state["page"] == "stage1":
+
     st.subheader("🌱 ステージ1：ポヨンのはらっぱ")
-
-    st.markdown(
-        """
-    ここは、ココモア王国の入口「ポヨンのはらっぱ」。  
-    地面がぽよんぽよんしていて、はじめての冒険者でも安心して歩ける場所です。  
-
-    ここでは **print** と **変数** の、いちばんやさしい魔法を練習するよ。  
-    1つの魔法ごとに「まねして書く → えらぶ → もう一度書く」という流れで進みます。
-    """
-    )
 
     idx = st.session_state["stage1_index"]
     step = st.session_state["stage1_step"]
-    
-    # ステージ進捗バー
+
+    # ---------------------------------------------------
+    # q（問題データ）は最初に必ず定義しておく
+    # ---------------------------------------------------
+    if idx < len(STAGE1_QUESTIONS):
+        q = STAGE1_QUESTIONS[idx]
+    else:
+        q = None  # 全問クリア時のみ None
+
+    # ---------------------------------------------------
+    # ⭐ STEP -1：導入画面（説明 → はじめるボタン）
+    # ---------------------------------------------------
+    if step == -1:
+
+        st.markdown(
+            """
+        ここは、ココモア王国の入口「ポヨンのはらっぱ」。  
+        地面がぽよんぽよんしていて、はじめての冒険者でも安心して歩ける場所です。  
+
+        ここでは **print** と **変数** の、いちばんやさしい魔法を練習するよ。  
+        1つの魔法ごとに「まねして書く → えらぶ → もう一度書く」という流れで進みます。
+        """
+        )
+
+        st.markdown("---")
+        play_sound("sounds/minaria_Poyon.mp3")
+
+        if st.button("🌱 はじめる"):
+            st.session_state["stage1_step"] = 0
+            st.rerun()
+
+        st.stop()
+
+    # ---------------------------------------------------
+    # STEP -1 を越えたので通常ステージ画面へ
+    # ---------------------------------------------------
+
+    # 進捗バー
     total1 = len(STAGE1_QUESTIONS)
     render_question_progress(idx, total1, label="ステージ1の進み具合：")
 
-
-    # すべて解き終わった場合
-    if idx >= len(STAGE1_QUESTIONS):
+    # ---------------------------------------------------
+    # 🌟 全問クリア
+    # ---------------------------------------------------
+    if q is None:  # idx が範囲外
         st.session_state["stage1_cleared"] = True
 
-        st.success("✨ すごい！ステージ1『ポヨンのはらっぱ』をクリアしたよ！")
+        st.success("✨ ステージ1『ポヨンのはらっぱ』をクリアしたよ！")
         st.info("ミナリア：最初の一歩を踏み出せたね。本当にえらいわ。次のステージも、あなたのペースでいきましょうね。")
 
-        # 🎞 ステージクリアアニメーション
         autoplay_video("stage1_clear.mp4", width="70%")
 
         if st.button("🔁 このステージを最初から復習する"):
             st.session_state["stage1_index"] = 0
-            st.session_state["stage1_step"] = 0
-            st.session_state["stage1_review"] = True  # 復習モードON
+            st.session_state["stage1_step"] = -1
+            st.session_state["stage1_review"] = True
             st.rerun()
 
+        st.stop()
+
+    # ---------------------------------------------------
+    # 👾 モンスター表示（STEP 0〜2 共通）
+    # ---------------------------------------------------
+    st.markdown("---")
+    st.markdown(f"### 👾 きょうのバグモンスター：{q['monster_name']}")
+
+    monster = q["monster_name"]
+
+    if "prev_monster" not in st.session_state or st.session_state["prev_monster"] != monster:
+        voice_path = q.get("voice_file")
+        if voice_path:
+            play_sound(voice_path)
+
+    st.session_state["prev_monster"] = monster
+
+    img_path = q.get("monster_image")
+    if img_path and os.path.exists(img_path):
+        st.image(img_path, use_container_width=True)
     else:
-        q = STAGE1_QUESTIONS[idx]
+        st.caption("※ まだイラストは準備中だよ")
 
-        # モンスター表示
-        st.markdown("---")
-        st.markdown(f"### 👾 きょうのバグモンスター：{q['monster_name']}")
+    st.markdown(q["monster_desc"])
+    st.markdown("---")
 
-        img_path = q.get("monster_image")
-        if img_path and os.path.exists(img_path):
-            st.image(img_path, use_container_width=True)
-        else:
-            st.caption("※ まだイラストは準備中だけど、ここにモンスターの絵が入る予定だよ。")
+    # ======================================================
+    # STEP 0：見本どおりに写す
+    # ======================================================
+    if step == 0:
 
-        st.markdown(q["monster_desc"])
+        st.info(q["lesson_intro"])
 
-        # ------------ STEP 0：見本どおりに写す ------------
-        if step == 0:
-            st.markdown("---")
-            st.info(q["lesson_intro"])
+        st.markdown("#### ✏ まずは見本どおりに書いてみよう")
+        st.code(q["copy_sample"], language="python")
 
-            st.markdown("#### ✏ まずは見本どおりに書いてみよう")
-            st.markdown("下のコードを、できるだけそのまままねして書いてみてね。")
+        code_input = st.text_area(
+            "ここにまねして書いてみてね：",
+            key=f"stage1_copy_{idx}",
+            height=80,
+        )
 
-            st.code(q["copy_sample"], language="python")
+        if st.button("このとおりに書けたかチェック", key=f"stage1_copy_btn_{idx}"):
 
-            code_input = st.text_area(
-                "ここにまねして書いてみてね：",
-                key=f"stage1_copy_{idx}",
-                height=80,
-            )
+            if not code_input.strip():
+                st.warning("なにも入力されていないみたい。少しだけでいいから、まねして書いてみよう。")
+                st.session_state["stage1_copy_correct"] = False
 
-            if st.button("このとおりに書けたかチェック", key=f"stage1_copy_btn_{idx}"):
-                if not code_input.strip():
-                    st.warning("なにも入力されていないみたい。少しだけでいいから、まねして書いてみよう。")
-                    st.session_state["stage1_copy_correct"] = False
-                    
-                elif normalize_code(code_input) == normalize_code(q["copy_sample"]):
+            elif normalize_code(code_input) == normalize_code(q["copy_sample"]):
 
-                    # ✅ 正解時：ユーザーが書いたコードを保存しておく
-                    st.session_state[f"stage1_last_copy_code_{idx}"] = code_input
+                st.session_state[f"stage1_last_copy_code_{idx}"] = code_input
 
-                    show_correct_feedback(
-                        message="ばっちり！見本どおりに書けたよ。次は同じ内容のクイズにチャレンジしよう。",
-                        xp_gain=10,
-                        monster_emoji="🐣",
-                    )
-                    st.session_state["stage1_copy_correct"] = True
+                show_correct_feedback(
+                    message="ばっちり！見本どおりに書けたよ。次は同じ内容のクイズにチャレンジしよう。",
+                    xp_gain=10,
+                    monster_emoji="🐣",
+                )
+                st.session_state["stage1_copy_correct"] = True
 
-                else:
-                    st.error("うーん、少しだけちがうみたい。スペルやカッコの位置を、もう一度見比べてみようか。")
-                    st.session_state["stage1_copy_correct"] = False
+            else:
+                st.error("うーん、少しちがうみたい。スペルやカッコの位置を見比べてみよう。")
+                st.session_state["stage1_copy_correct"] = False
 
-            # ✅ 写経に成功したときだけ「クイズへ進む」ボタンを出す
-            if st.session_state.get("stage1_copy_correct", False):
-                st.markdown("")
-                if st.button("▶ クイズに進む", key=f"stage1_to_quiz_{idx}"):
-                    st.session_state["stage1_step"] = 1
-                    st.session_state["stage1_copy_correct"] = False
-                    st.rerun()
+        if st.session_state.get("stage1_copy_correct", False):
+            if st.button("▶ クイズに進む", key=f"stage1_to_quiz_{idx}"):
+                st.session_state["stage1_step"] = 1
+                st.session_state["stage1_copy_correct"] = False
+                st.rerun()
 
+    # ======================================================
+    # STEP 1：3択問題
+    # ======================================================
+    elif step == 1:
 
-        # ------------ STEP 1：3択問題で理解チェック ------------
-        elif step == 1:
-            st.markdown("---")
-            st.markdown(f"**{q['text']}**")
+        st.markdown(f"**{q['text']}**")
 
-            # 💾 さっき写したコードを見られるようにする
-            last_code = st.session_state.get(f"stage1_last_copy_code_{idx}")
-            if last_code:
-                with st.expander("💾 さっき写したコードをもう一度見る"):
-                    st.code(last_code, language="python")
-            
-            choice_key = f"stage1_choice_{idx}"
-            user_choice = st.radio(
-                "正しいと思うものをえらんでね：",
-                q["choices"],
-                index=None,
-                key=choice_key,
-            )
+        last_code = st.session_state.get(f"stage1_last_copy_code_{idx}")
+        if last_code:
+            with st.expander("💾 さっき写したコードをもう一度見る"):
+                st.code(last_code, language="python")
 
-            # 「解答する」が押されたときの処理
-            if st.button("解答する", key=f"stage1_submit_{idx}"):
-                if user_choice is None:
-                    st.warning("どれか1つを選んでから、『解答する』ボタンを押してね。")
-                    st.session_state["stage1_last_answer_correct"] = False
-                else:
-                    correct_choice = q["choices"][q["correct_index"]]
+        choice_key = f"stage1_choice_{idx}"
+        user_choice = st.radio(
+            "正しいと思うものをえらんでね：",
+            q["choices"],
+            index=None,
+            key=choice_key,
+        )
 
-                    if user_choice == correct_choice:
-                        # 復習モードかどうかで分岐
-                        if st.session_state.get("stage1_review", False):
-                            st.success("⭕ 正解！バグモンスターが安心した顔でどこかへ帰っていったよ。（復習モードなのでXPは変わらないよ）")
-                            st.info(f"ミナリア：{q['explain']}")
-                        else:
-                            # ✅ 共通の正解UI＋XPアニメを使用
-                            show_correct_feedback(
-                                message="バグモンスターが、にこっと笑ってどこかへ帰っていったよ。",
-                                xp_gain=20,
-                                monster_emoji="🟢",  # 好きな絵文字に変えてOK
-                            )
-                            st.info(f"ミナリア：{q['explain']}")
+        if st.button("解答する", key=f"stage1_submit_{idx}"):
 
-                        # ここではまだステップを進めない
-                        st.session_state["stage1_last_answer_correct"] = True
+            if user_choice is None:
+                st.warning("どれか1つを選んでから、『解答する』を押してね。")
+                st.session_state["stage1_last_answer_correct"] = False
 
-                    else:
-                        st.error("❌ ざんねん…！でも大丈夫、ここで間違えるのはふつうのことだよ。")
-                        st.info(f"ミナリア：ヒントね。{q['hint']}")
-                        st.session_state["stage1_last_answer_correct"] = False
+            else:
+                correct_choice = q["choices"][q["correct_index"]]
 
-            # ✅ 正解だったときだけ「次へ進む」ボタンを出す
-            if st.session_state.get("stage1_last_answer_correct", False):
-                st.markdown("")
-                if st.button("▶ 次へ進む", key=f"stage1_next_{idx}"):
-                    # 次は「もう一度書いてみよう」ステップへ
-                    st.session_state["stage1_step"] = 2
-                    st.session_state["stage1_last_answer_correct"] = False
-                    st.rerun()
+                if user_choice == correct_choice:
 
-
-        # ------------ STEP 2：少し変えて、もう一度自分で書く ------------
-        elif step == 2:
-            st.markdown("---")
-            st.markdown("#### ✏ もう一度、自分の手で書いてみよう")
-            st.markdown(q["rewrite_prompt"])
-
-            # 💾 STEP0で写したコードを、ここからも見返せるようにする
-            last_code = st.session_state.get(f"stage1_last_copy_code_{idx}")
-            if last_code:
-                with st.expander("💾 さっき写したコードをもう一度見る"):
-                    st.code(last_code, language="python")
-            
-            rewrite_input = st.text_area(
-                "ここにコードを書いてみてね：",
-                key=f"stage1_rewrite_{idx}",
-                height=80,
-            )
-
-            if st.button("できたかチェック", key=f"stage1_rewrite_btn_{idx}"):
-                if not rewrite_input.strip():
-                    st.warning("まだ何も書かれていないみたい。1行だけでいいから、書いてみよう。")
-                    st.session_state["stage1_rewrite_correct"] = False
-
-                elif normalize_code(rewrite_input) == normalize_code(q["rewrite_answer"]):
-                    # ✅ 正解時の演出
                     if st.session_state.get("stage1_review", False):
-                        # 復習モード：XPなし・やさしいメッセージだけ
-                        st.success("✨ いい感じ！同じ形で少し変えて書けたね。（復習モードなのでXPは変わらないよ）")
+                        st.success("⭕ 正解！（復習モードなのでXPは変わらないよ）")
+                        st.info(f"ミナリア：{q['explain']}")
                     else:
-                        # 本番モード：大きな緑枠＋XPポップ
                         show_correct_feedback(
-                            message="すばらしい！形を思い出して、自分の手で書けたね。",
-                            xp_gain=15,          # XPはSTEP1より少し少なめにしてバランス調整
+                            message="バグモンスターがにこっと笑ったよ！",
+                            xp_gain=20,
+                            monster_emoji="🟢",
+                        )
+                        st.info(f"ミナリア：{q['explain']}")
+
+                    st.session_state["stage1_last_answer_correct"] = True
+
+                else:
+                    st.error("❌ ざんねん…！でも大丈夫、ここで迷うのはふつうだよ。")
+                    st.info(f"ミナリア：ヒントね。{q['hint']}")
+                    st.session_state["stage1_last_answer_correct"] = False
+
+        if st.session_state.get("stage1_last_answer_correct", False):
+            if st.button("▶ 次へ進む", key=f"stage1_next_{idx}"):
+                st.session_state["stage1_step"] = 2
+                st.session_state["stage1_last_answer_correct"] = False
+                st.rerun()
+
+    # ======================================================
+    # STEP 2：もう一度書く
+    # ======================================================
+    elif step == 2:
+
+        st.markdown("#### ✏ もう一度、自分の手で書いてみよう")
+        st.markdown(q["rewrite_prompt"])
+
+        last_code = st.session_state.get(f"stage1_last_copy_code_{idx}")
+        if last_code:
+            with st.expander("💾 さっき写したコードを見る"):
+                st.code(last_code, language="python")
+
+        rewrite_input = st.text_area(
+            "ここにコードを書いてみてね：",
+            key=f"stage1_rewrite_{idx}",
+            height=80,
+        )
+
+        # 🔘 判定ボタン
+        if st.button("できたかチェック", key=f"stage1_rewrite_btn_{idx}"):
+
+            # 入力なしチェック
+            if not rewrite_input.strip():
+                st.warning("まだ何も書かれていないみたい。1行だけでいいよ。")
+                st.session_state["stage1_rewrite_correct"] = False
+
+            else:
+                is_correct = False
+
+                # ②問目（変数 name の問題）だけ、「好きな名前OK」にする
+                if idx == 1:
+                    if is_valid_name_assignment(rewrite_input):
+                        is_correct = True
+                else:
+                    # 通常の判定：模範解答と一致
+                    if normalize_code(rewrite_input) == normalize_code(q["rewrite_answer"]):
+                        is_correct = True
+
+                # 🎉 正解 / 不正解処理
+                if is_correct:
+                    if st.session_state.get("stage1_review", False):
+                        st.success("✨ いい感じ！（復習モードなのでXPなし）")
+                    else:
+                        show_correct_feedback(
+                            message="すばらしい！形を思い出して書けたね！",
+                            xp_gain=15,
                             monster_emoji="✨",
                         )
                     st.session_state["stage1_rewrite_correct"] = True
 
                 else:
-                    st.error("うーん、少しだけちがうみたい。さっきの見本を思い出して、形をもう一度見直してみよう。")
+                    st.error("うーん、少し違うみたい。見本の形を思い出してみよう。")
                     st.session_state["stage1_rewrite_correct"] = False
 
-            # ✅ 正解しているときだけ「次の問題へ」ボタンを出す
-            if st.session_state.get("stage1_rewrite_correct", False):
-                st.markdown("")
-                if st.button("▶ 次の問題へ", key=f"stage1_next_question_{idx}"):
-                    # 次の問題へ
-                    st.session_state["stage1_index"] += 1
-                    st.session_state["stage1_step"] = 0
-                    st.session_state["stage1_rewrite_correct"] = False
-                    st.rerun()
-            
+        # ▶ 次へボタン
+        if st.session_state.get("stage1_rewrite_correct", False):
+            if st.button("▶ 次の問題へ", key=f"stage1_next_question_{idx}"):
+                st.session_state["stage1_index"] += 1
+                st.session_state["stage1_step"] = 0
+                st.session_state["stage1_rewrite_correct"] = False
+                st.rerun()
+
+    # ---------------------------------------------------
+    # ページ下部の共通ボタン（どのSTEPでも表示）
+    # ---------------------------------------------------
     st.markdown("---")
     if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
         st.session_state["page"] = "chat"
@@ -889,6 +1091,7 @@ elif st.session_state["page"] == "stage1":
     if st.button("🏠 タイトルにもどる"):
         st.session_state["page"] = "home"
         st.rerun()
+
 
 # ======================================================
 #  ページ: ステージ2 もりねむの小道（if文 3択＋モンスター）
@@ -967,7 +1170,7 @@ elif st.session_state["page"] == "stage2":
                         st.success("⭕ 正解！バグモンスターが、ほっとした顔で森の奥へ帰っていったよ。XP +25")
                         st.info(f"ミナリア：{q2['explain']}")
                         st.session_state["xp"] += 25
-                        save_to_localstorage("xp", st.session_state["xp"])
+                        save_xp(st.session_state["xp"])
                         update_level()
 
                     st.session_state["stage2_index"] += 1
@@ -1061,7 +1264,7 @@ elif st.session_state["page"] == "stage3":
                         st.success("⭕ 正解！塔の階段がまっすぐにつながって、バグモンスターがうれしそうに上へ進んでいったよ。XP +30")
                         st.info(f"ミナリア：{q3['explain']}")
                         st.session_state["xp"] += 30
-                        save_to_localstorage("xp", st.session_state["xp"])
+                        save_xp(st.session_state["xp"])
                         update_level()
 
                     st.session_state["stage3_index"] += 1
@@ -1132,7 +1335,7 @@ elif st.session_state["page"] == "chat":
                 st.success(f"🎁 ミナリアから『{item_name}』をもらった！ 追加で {item_xp} XP ゲット！")
 
             st.session_state["xp"] += gained_xp
-            save_to_localstorage("xp", st.session_state["xp"])
+            save_xp(st.session_state["xp"])
             update_level()
 
         except Exception as e:
@@ -1154,16 +1357,20 @@ elif st.session_state["page"] == "chat":
     if st.button("🏠 タイトルにもどる"):
         st.session_state["page"] = "home"
         st.rerun()
+        
+    
 
 
 # ======================================================
 #  ページ: マイページ（進捗ダッシュボード）
 # ======================================================
 elif st.session_state["page"] == "mypage":
+
     st.subheader("📊 冒険者マイページ")
-
+        
     st.markdown("### 🧑‍🚀 冒険者ステータス")
-
+    play_sound("sounds/yurukawa_top_loop_v2.mp3")
+    
     # -------------------------
     # XP 称号システム（表示）
     # -------------------------
