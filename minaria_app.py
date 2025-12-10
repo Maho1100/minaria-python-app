@@ -8,7 +8,6 @@ import uuid
 import json  # ★ 保存機能　あとでデータベースにする予定
 import pathlib #音
 import base64
-from io import BytesIO #読み上げ
 from pydub import AudioSegment #読み上げ
 from pydub.playback import play #読み上げ
 import io #読み上げ
