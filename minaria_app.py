@@ -702,7 +702,7 @@ def show_correct_feedback(message: str, xp_gain: int, monster_emoji: str = "👾
     new_title = get_title_by_xp(st.session_state["xp"])["current_name"]
     if new_title != old_title:
         st.success(f"🌟 NEW称号 解放！ {new_title}")
-        play_sound("sounds/title_fanfare.mp3")
+        play_sound("sounds/new_title_unlock.mp3")
 
     # 今回のXPを last_xp として保存
     st.session_state["last_xp"] = st.session_state["xp"]
@@ -728,7 +728,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
                    
-
+# トップBGM：自動ループ再生
+autoplay_bgm("sounds/yurukawa_top_loop_v2.mp3")
 # ======================================================
 #  ページ: home
 # ======================================================
@@ -757,9 +758,6 @@ if st.session_state["page"] == "home":
     )
 
     st.markdown("---")
-
-        # 🎵 BGM 固定再生（音量は関数側のデフォルト or ファイル側で調整）
-    autoplay_bgm("sounds/yurukawa_top_loop_v2.mp3")
 
     # 1行目：導入 ＋ ステージ1
     row1_col1, row1_col2 = st.columns(2)
@@ -815,6 +813,10 @@ elif st.session_state["page"] == "intro":
     )
 
     st.markdown("")
+    
+    play_sound("sounds/title_fanfare.mp3")
+    play_sound("sounds/yurukawa_top_loop_v2.mp3")
+    
     if st.button("👩‍🍼 ミナリアと話してみる"):
         st.session_state["page"] = "chat"
         st.rerun()
@@ -859,6 +861,7 @@ elif st.session_state["page"] == "stage1":
 
         st.markdown("---")
         play_sound("sounds/minaria_Poyon.mp3")
+        
 
         if st.button("🌱 はじめる"):
             st.session_state["stage1_step"] = 0
@@ -1082,6 +1085,8 @@ elif st.session_state["page"] == "stage1":
     # ページ下部の共通ボタン（どのSTEPでも表示）
     # ---------------------------------------------------
     st.markdown("---")
+    play_sound("sounds/yurukawa_top_loop_v2.mp3")
+    
     if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
         st.session_state["page"] = "chat"
         st.rerun()
@@ -1367,7 +1372,7 @@ elif st.session_state["page"] == "mypage":
     st.subheader("📊 冒険者マイページ")
         
     st.markdown("### 🧑‍🚀 冒険者ステータス")
-    play_sound("sounds/yurukawa_top_loop_v2.mp3")
+    # play_sound("sounds/yurukawa_top_loop_v2.mp3")
     
     # -------------------------
     # XP 称号システム（表示）
