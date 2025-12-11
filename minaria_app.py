@@ -981,13 +981,21 @@ elif st.session_state["page"] == "stage1":
 
                 st.session_state[f"stage1_last_copy_code_{idx}"] = code_input
 
-                award_xp_once(
-                    stage=1,
-                    idx=idx,
-                    xp=10,
-                    message="ばっちり！見本どおりに書けたよ。次は同じ内容のクイズにチャレンジしよう。",
-                    emoji="🐣",
-                )
+                # ⭐ 復習モードのときはXPを増やさない
+                if st.session_state.get("stage1_review", False):
+                    show_correct_feedback(
+                        message="ばっちり！見本どおりに書けたよ。（復習モードなのでXPは変わらないよ）",
+                        xp_gain=0,
+                        monster_emoji="🐣",
+                    )
+                else:
+                    # ⭐ 初回クリア用：STEP0 専用の key を使う
+                    award_xp_once(
+                        key=f"stage1_{idx}_step0",
+                        xp=10,
+                        message="ばっちり！見本どおりに書けたよ。次は同じ内容のクイズにチャレンジしよう。",
+                        emoji="🐣",
+                    )
 
                 st.session_state["stage1_copy_correct"] = True
 
