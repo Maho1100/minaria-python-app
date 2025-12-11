@@ -197,8 +197,12 @@ def render_question_progress(current_index: int, total: int, label: str = "い�
 # ======================================================
 #  解答ボタンを複数回押さないようにする関数
 # ======================================================
-def one_time_button(label, key):
-    if key not in st.session_state:
+def one_time_button(label, key, allow_retry=False):
+    """
+    allow_retry=True のときは、その描画タイミングで毎回「未押下」にリセットする。
+    （復習モードで使うと便利）
+    """
+    if key not in st.session_state or allow_retry:
         st.session_state[key] = False
 
     clicked = st.button(label, disabled=st.session_state[key])
@@ -207,11 +211,9 @@ def one_time_button(label, key):
     return clicked
 
 # ======================================================
-#  初回正解だけ XP を付与する共通関数
+#  初回正解だけ XP を付与する共通関数（キーは呼び出し側で決める）
 # ======================================================
-def award_xp_once(stage: int, idx: int, xp: int, message: str, emoji: str):
-    key = f"{stage}_{idx}"
-
+def award_xp_once(key: str, xp: int, message: str, emoji: str):
     # すでに正解している場合（やり直し・復習）
     if st.session_state["solved"].get(key, False):
         show_correct_feedback(
@@ -229,6 +231,7 @@ def award_xp_once(stage: int, idx: int, xp: int, message: str, emoji: str):
     )
     st.session_state["solved"][key] = True
     return True  # 初回クリア
+
 
 # ======================================================
 #  XPご褒美：称号システム
@@ -824,8 +827,6 @@ if st.session_state["page"] == "home":
         unsafe_allow_html=True,
     )
 
-
-
 # ======================================================
 #  ページ: 導入シナリオ
 # ======================================================
@@ -966,7 +967,11 @@ elif st.session_state["page"] == "stage1":
         )
 
         # ⭐ これが「一度押したら二度と押せないボタン」
-        if one_time_button("できたかチェック", key=f"stage1_copy_btn_{idx}"):
+        if one_time_button(
+            "できたかチェック",
+            key=f"stage1_copy_btn_{idx}",
+            allow_retry=st.session_state.get("stage1_review", False),
+        ):
 
             if not code_input.strip():
                 st.warning("なにも入力されていないみたい。少しだけでいいから、まねして書いてみよう。")
@@ -1032,12 +1037,10 @@ elif st.session_state["page"] == "stage1":
                         st.info(f"ミナリア：{q['explain']}")
                     else:
                         award_xp_once(
-                            stage=1,
-                            idx=idx,
+                            key=f"stage1_{idx}_step1",
                             xp=20,
                             message="バグモンスターがにこっと笑ったよ！",
-                            
-                            emoji="🟢"
+                            emoji="🟢",
                         )
                         
                         st.info(f"ミナリア：{q['explain']}")
@@ -1100,11 +1103,10 @@ elif st.session_state["page"] == "stage1":
                         st.success("✨ いい感じ！（復習モードなのでXPなし）")
                     else:
                         award_xp_once(
-                            stage=1,
-                            idx=idx,
-                            xp=15,
-                            message="すばらしい！形を思い出して書けたね！",
-                            emoji="✨"
+                            key=f"stage1_{idx}_step2",
+                            xp=20,
+                            message="自分の力で書けたね！とってもいい感じ！",
+                            emoji="✨",
                             )
                         
                     st.session_state["stage1_rewrite_correct"] = True
@@ -1218,8 +1220,7 @@ elif st.session_state["page"] == "stage2":
                     # ⭐ 初回 or 2回目以降 → award_xp_once が自動判定
                     else:
                         award_xp_once(
-                            stage=2,
-                            idx=idx2,
+                            key=f"stage2_{idx2}",
                             xp=25,
                             message="⭕ 正解！バグモンスターが、ほっとした顔で森の奥へ帰っていったよ。",
                             emoji="🌳",
@@ -1323,8 +1324,7 @@ elif st.session_state["page"] == "stage3":
 
                     else:
                         award_xp_once(
-                            stage=3,
-                            idx=idx3,
+                            key=f"stage3_{idx3}",
                             xp=30,
                             message="⭕ 正解！高い塔の階段も、スイスイのぼれるようになってきたよ！",
                             emoji="🗼",
