@@ -1168,7 +1168,6 @@ elif st.session_state["page"] == "stage2":
     total2 = len(STAGE2_QUESTIONS)
     render_question_progress(idx2, total2, label="ステージ2の進み具合：")
 
-
     if idx2 >= len(STAGE2_QUESTIONS):
         st.session_state["stage2_cleared"] = True
 
@@ -1208,52 +1207,52 @@ elif st.session_state["page"] == "stage2":
             key=choice_key2,
         )
 
+        # ⭐ 解答ボタンと判定ロジックは「else」の中にネストする
         if st.button("解答する", key=f"stage2_submit_{idx2}"):
 
-    # 選択されていない場合
-    if user_choice2 is None:
-        st.warning("どれか1つを選んでから、『解答する』ボタンを押してね。")
-        return  # 関数外の場合は return を削除してよい
+            # 選択されていない場合
+            if user_choice2 is None:
+                st.warning("どれか1つを選んでから、『解答する』ボタンを押してね。")
 
-    correct_choice2 = q2["choices"][q2["correct_index"]]
+            else:
+                correct_choice2 = q2["choices"][q2["correct_index"]]
 
-    # 正解した場合
-    if user_choice2 == correct_choice2:
+                # 正解した場合
+                if user_choice2 == correct_choice2:
 
-        # ⭐ 復習モード → XPは与えない
-        if st.session_state.get("stage2_review", False):
-            st.success("⭕ 正解！森のバグモンスターがほっとした顔で帰っていったよ。（復習モードなのでXPは変わらないよ）")
-            st.info(f"ミナリア：{q2['explain']}")
+                    # ⭐ 復習モード → XPは与えない
+                    if st.session_state.get("stage2_review", False):
+                        st.success("⭕ 正解！森のバグモンスターがほっとした顔で帰っていったよ。（復習モードなのでXPは変わらないよ）")
+                        st.info(f"ミナリア：{q2['explain']}")
 
-        # ⭐ 初回 or 2回目以降 → award_xp_once が自動判定
-        else:
-            award_xp_once(
-                stage=2,
-                idx=idx2,
-                xp=25,
-                message="⭕ 正解！バグモンスターが、ほっとした顔で森の奥へ帰っていったよ。",
-                emoji="🌳",
-            )
-            st.info(f"ミナリア：{q2['explain']}")
+                    # ⭐ 初回 or 2回目以降 → award_xp_once が自動判定
+                    else:
+                        award_xp_once(
+                            stage=2,
+                            idx=idx2,
+                            xp=25,
+                            message="⭕ 正解！バグモンスターが、ほっとした顔で森の奥へ帰っていったよ。",
+                            emoji="🌳",
+                        )
+                        st.info(f"ミナリア：{q2['explain']}")
 
-        # 次の問題へ進む
-        st.session_state["stage2_index"] += 1
-        st.rerun()
+                    # 次の問題へ進む
+                    st.session_state["stage2_index"] += 1
+                    st.rerun()
 
-    # ❌ 不正解の場合
-    else:
-        st.error("❌ ざんねん…！でも大丈夫、ここで迷うのは当たり前なの。")
-        st.info(f"ミナリア：ヒントね。{q2['hint']}")
+                # ❌ 不正解の場合
+                else:
+                    st.error("❌ ざんねん…！でも大丈夫、ここで迷うのは当たり前なの。")
+                    st.info(f"ミナリア：ヒントね。{q2['hint']}")
 
+        st.markdown("---")
+        if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
+            st.session_state["page"] = "chat"
+            st.rerun()
 
-    st.markdown("---")
-    if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
-        st.session_state["page"] = "chat"
-        st.rerun()
-
-    if st.button("🏠 タイトルにもどる"):
-        st.session_state["page"] = "home"
-        st.rerun()
+        if st.button("🏠 タイトルにもどる"):
+            st.session_state["page"] = "home"
+            st.rerun()
 
 
 # ======================================================
