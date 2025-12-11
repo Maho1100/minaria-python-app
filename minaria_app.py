@@ -1271,19 +1271,18 @@ elif st.session_state["page"] == "stage3":
     )
 
     idx3 = st.session_state["stage3_index"]
-    
+
     # ステージ進捗バー
     total3 = len(STAGE3_QUESTIONS)
     render_question_progress(idx3, total3, label="ステージ3の進み具合：")
 
-
+    # クリア判定
     if idx3 >= len(STAGE3_QUESTIONS):
         st.session_state["stage3_cleared"] = True
 
         st.success("✨ ステージ3『くるくるループの塔』をクリアしたよ！")
         st.info("ミナリア：くり返しの魔法まで身についたなんて、本当にすごいわ。これで基礎の魔法はばっちりね。")
-        
-        # 🎞 ステージ3クリアアニメーション
+
         autoplay_video("stage3_clear.mp4", width="70%")
 
         if st.button("🔁 このステージを最初から復習する"):
@@ -1298,6 +1297,7 @@ elif st.session_state["page"] == "stage3":
         st.markdown(f"### 👾 きょうのバグモンスター：{q3['monster_name']}")
 
         img_path3 = q3.get("monster_image")
+        
         if img_path3 and os.path.exists(img_path3):
             st.image(img_path3, use_container_width=True)
         else:
@@ -1318,51 +1318,46 @@ elif st.session_state["page"] == "stage3":
 
         if st.button("解答する", key=f"stage3_submit_{idx3}"):
 
-    # まだ何も選んでないとき
-    if user_choice3 is None:
-        st.warning("どれか1つを選んでから、『解答する』ボタンを押してね。")
-        return  # 関数の中なら return してOK（外ならこの行は消してもいい）
+            # まだ何も選んでないとき
+            if user_choice3 is None:
+                st.warning("どれか1つを選んでから、『解答する』ボタンを押してね。")
 
-    # 正解の選択肢
-    correct_choice3 = q3["choices"][q3["correct_index"]]
+            else:
+                correct_choice3 = q3["choices"][q3["correct_index"]]
 
-    # 正解したとき
-    if user_choice3 == correct_choice3:
+                if user_choice3 == correct_choice3:
 
-        # 復習モードのときはXPは増やさない
-        if st.session_state.get("stage3_review", False):
-            st.success("⭕ 正解！塔の階段をスイスイのぼっていけるようになったよ。（復習モードなのでXPは変わらないよ）")
-            st.info(f"ミナリア：{q3['explain']}")
+                    if st.session_state.get("stage3_review", False):
+                        st.success("⭕ 正解！塔の階段をスイスイのぼっていけるようになったよ。（復習モードなのでXPは変わらないよ）")
+                        st.info(f"ミナリア：{q3['explain']}")
 
-        # 復習モードじゃないときは award_xp_once におまかせ
-        else:
-            award_xp_once(
-                stage=3,
-                idx=idx3,
-                xp=30,  # 好きな値にしてOK（例: 30）
-                message="⭕ 正解！高い塔の階段も、スイスイのぼれるようになってきたよ！",
-                emoji="🗼",
-            )
-            st.info(f"ミナリア：{q3['explain']}")
+                    else:
+                        award_xp_once(
+                            stage=3,
+                            idx=idx3,
+                            xp=30,
+                            message="⭕ 正解！高い塔の階段も、スイスイのぼれるようになってきたよ！",
+                            emoji="🗼",
+                        )
+                        st.info(f"ミナリア：{q3['explain']}")
 
-        # 次の問題へ進む
-        st.session_state["stage3_index"] += 1
-        st.rerun()
+                    st.session_state["stage3_index"] += 1
+                    st.rerun()
 
-    # 不正解のとき
-    else:
-        st.error("❌ ざんねん…！でも大丈夫、くり返しは少しずつ慣れていけばいいのよ。")
-        st.info(f"ミナリア：ヒントね。{q3['hint']}")
+                else:
+                    st.error("❌ ざんねん…！でも大丈夫、くり返しは少しずつ慣れていけばいいのよ。")
+                    st.info(f"ミナリア：ヒントね。{q3['hint']}")
 
 
-    st.markdown("---")
-    if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
-        st.session_state["page"] = "chat"
-        st.rerun()
+        st.markdown("---")
+        if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
+            st.session_state["page"] = "chat"
+            st.rerun()
 
-    if st.button("🏠 タイトルにもどる"):
-        st.session_state["page"] = "home"
-        st.rerun()
+        if st.button("🏠 タイトルにもどる"):
+            st.session_state["page"] = "home"
+            st.rerun()
+
 
 
 # ======================================================
