@@ -1493,23 +1493,33 @@ elif st.session_state["page"] == "mypage":
 
     st.markdown("---")
 
+    # -------------------------
+    # ステージ進捗（solved ベース）
+    # -------------------------
+    solved = st.session_state.get("solved", {})
+
+    # 🌱 ステージ1：各問題の「STEP2 まで解き切った数」をカウント
     total_stage1 = len(STAGE1_QUESTIONS)
-    if st.session_state.get("stage1_cleared", False):
-        done_stage1 = total_stage1
-    else:
-        done_stage1 = st.session_state.get("stage1_index", 0)
+    done_stage1 = sum(
+        1 for i in range(total_stage1)
+        if solved.get(f"stage1_{i}_step2", False)
+    )
 
+    # 🌿 ステージ2：各問題ごとに1回正解したか
     total_stage2 = len(STAGE2_QUESTIONS)
-    if st.session_state.get("stage2_cleared", False):
-        done_stage2 = total_stage2
-    else:
-        done_stage2 = st.session_state.get("stage2_index", 0)
+    done_stage2 = sum(
+        1 for i in range(total_stage2)
+        if solved.get(f"stage2_{i}", False)
+    )
 
+    # 🌀 ステージ3：各問題ごとに1回正解したか
     total_stage3 = len(STAGE3_QUESTIONS)
-    if st.session_state.get("stage3_cleared", False):
-        done_stage3 = total_stage3
-    else:
-        done_stage3 = st.session_state.get("stage3_index", 0)
+    done_stage3 = sum(
+        1 for i in range(total_stage3)
+        if solved.get(f"stage3_{i}", False)
+    )
+
+
 
     def stage_badge(done, total):
         if done >= total:
