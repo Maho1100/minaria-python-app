@@ -975,7 +975,6 @@ elif st.session_state["page"] == "stage1":
             height=80,
         )
 
-        # if st.button("このとおりに書けたかチェック", key=f"stage1_copy_btn_{idx}"):
         # ⭐ これが「一度押したら二度と押せないボタン」
         if one_time_button("できたかチェック", key=f"stage1_copy_btn_{idx}"):
 
@@ -985,17 +984,17 @@ elif st.session_state["page"] == "stage1":
 
             elif normalize_code(code_input) == normalize_code(q["copy_sample"]):
 
-            st.session_state[f"stage1_last_copy_code_{idx}"] = code_input
+                st.session_state[f"stage1_last_copy_code_{idx}"] = code_input
 
-            award_xp_once(
-                stage=1,
-                idx=idx,
-                xp=10,
-                message="ばっちり！見本どおりに書けたよ。次は同じ内容のクイズにチャレンジしよう。",
-                emoji="🐣"
-            )
+                award_xp_once(
+                    stage=1,
+                    idx=idx,
+                    xp=10,
+                    message="ばっちり！見本どおりに書けたよ。次は同じ内容のクイズにチャレンジしよう。",
+                    emoji="🐣",
+                )
 
-            st.session_state["stage1_copy_correct"] = True
+                st.session_state["stage1_copy_correct"] = True
 
             else:
                 st.error("うーん、少しちがうみたい。スペルやカッコの位置を見比べてみよう。")
