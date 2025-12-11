@@ -1213,7 +1213,7 @@ elif st.session_state["page"] == "stage2":
     # 選択されていない場合
     if user_choice2 is None:
         st.warning("どれか1つを選んでから、『解答する』ボタンを押してね。")
-        return
+        return  # 関数外の場合は return を削除してよい
 
     correct_choice2 = q2["choices"][q2["correct_index"]]
 
@@ -1240,10 +1240,11 @@ elif st.session_state["page"] == "stage2":
         st.session_state["stage2_index"] += 1
         st.rerun()
 
-    # 不正解の場合
+    # ❌ 不正解の場合
     else:
         st.error("❌ ざんねん…！でも大丈夫、ここで迷うのは当たり前なの。")
         st.info(f"ミナリア：ヒントね。{q2['hint']}")
+
 
     st.markdown("---")
     if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
