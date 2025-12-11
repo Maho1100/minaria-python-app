@@ -701,9 +701,7 @@ def update_level():
 def show_correct_feedback(message: str, xp_gain: int, monster_emoji: str = "👾"):
     """
     正解したときの共通UI＋XP加算。
-    ・大きな緑ボックス
-    ・モンスターの喜ぶアイコン
-    ・XP +◯ のポップ
+    XPが0のときはXPポップは表示しない。
     """
 
     html = f"""
@@ -717,36 +715,28 @@ def show_correct_feedback(message: str, xp_gain: int, monster_emoji: str = "👾
     """
     st.markdown(html, unsafe_allow_html=True)
 
-    # XPポップ表示
-    st.markdown(f'<div class="xp-float">+{xp_gain} XP</div>', unsafe_allow_html=True)
-    # ここでクリア音を鳴らす
-    play_sound("sounds/stage_clear.mp3")
+    # ⭐ XPが0のときはポップを出さない
+    if xp_gain > 0:
+        st.markdown(f'<div class="xp-float">+{xp_gain} XP</div>', unsafe_allow_html=True)
+        play_sound("sounds/stage_clear.mp3")
 
-    # -----------------------------------------
-    # XP加算 ＋ ご褒美（称号チェック）
-    # -----------------------------------------
-
-    # XP加算前の状態を保存
+    # XP加算前の状態
     old_xp = st.session_state["xp"]
     old_title = get_title_by_xp(old_xp)["current_name"]
 
     # XP加算
     st.session_state["xp"] += xp_gain
     update_level()
-
-    # === XPをブラウザへ保存（統一関数） ===
     save_xp(st.session_state["xp"])
 
-    # NEW称号チェック
-    new_title = get_title_by_xp(st.session_state["xp"])["current_name"]
-    if new_title != old_title:
-        st.success(f"🌟 NEW称号 解放！ {new_title}")
-        play_sound("sounds/new_title_unlock.mp3")
+    # NEW称号チェック（xp_gain > 0 のときだけでOK）
+    if xp_gain > 0:
+        new_title = get_title_by_xp(st.session_state["xp"])["current_name"]
+        if new_title != old_title:
+            st.success(f"🌟 NEW称号 解放！ {new_title}")
+            play_sound("sounds/new_title_unlock.mp3")
 
-    # 今回のXPを last_xp として保存
     st.session_state["last_xp"] = st.session_state["xp"]
-
-
 
 # ---------- ログインボーナス ----------
 today_str = datetime.date.today().isoformat()
