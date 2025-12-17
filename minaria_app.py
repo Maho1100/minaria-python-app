@@ -1072,7 +1072,7 @@ elif st.session_state["page"] == "stage1":
     # ---------------------------------------------------
     # 🌟 全問クリア
     # ---------------------------------------------------
-    if q is None:  # idx が範囲外
+        if q is None:  # idx が範囲外（全問クリア）
         st.session_state["stage1_cleared"] = True
 
         st.success("✨ ステージ1『ポヨンのはらっぱ』をクリアしたよ！")
@@ -1080,11 +1080,31 @@ elif st.session_state["page"] == "stage1":
 
         autoplay_video("stage1_clear.mp4", width="70%")
 
-        if st.button("🔁 このステージを最初から復習する"):
-            st.session_state["stage1_index"] = 0
-            st.session_state["stage1_step"] = -1
-            st.session_state["stage1_review"] = True
-            st.rerun()
+        st.markdown("### 👉 次にやること")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            if st.button("🌿 ステージ2へ進む", key="stage1_to_stage2"):
+                st.session_state["page"] = "stage2"
+                st.rerun()
+
+        with col2:
+            if st.button("📊 マイページで成果を見る", key="stage1_to_mypage"):
+                st.session_state["page"] = "mypage"
+                st.rerun()
+
+        with col3:
+            if st.button("🏠 タイトルにもどる", key="stage1_to_home"):
+                st.session_state["page"] = "home"
+                st.rerun()
+
+        with col4:
+            if st.button("🔁 このステージを復習する", key="stage1_review_restart"):
+                st.session_state["stage1_index"] = 0
+                st.session_state["stage1_step"] = -1
+                st.session_state["stage1_review"] = True
+                st.rerun()
 
         st.stop()
 
@@ -1429,6 +1449,16 @@ elif st.session_state["page"] == "stage1":
 #  ページ: ステージ2 もりねむの小道（if文 3択＋モンスター）
 # ======================================================
 elif st.session_state["page"] == "stage2":
+    
+    # ===============================
+    # 🔰 ステージ2用 session_state 初期化（ここ！）
+    # ===============================
+    if "stage2_last_answer_correct" not in st.session_state:
+        st.session_state["stage2_last_answer_correct"] = False
+
+    if "stage2_index" not in st.session_state:
+        st.session_state["stage2_index"] = 0
+        
     st.subheader("🌿 ステージ2：もりねむの小道")
 
     st.markdown(
