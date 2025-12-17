@@ -1455,7 +1455,16 @@ elif st.session_state["page"] == "stage2":
         st.info("ミナリア：条件で動きを変える魔法、だいぶわかってきたみたいね。とっても素敵よ。")
         
         # 🎞 ステージ2クリアアニメーション
-        autoplay_video("stage2_clear.mp4", width="70%")
+        if "stage2_clear_played" not in st.session_state:
+            st.session_state["stage2_clear_played"] = False
+
+        if not st.session_state["stage2_clear_played"]:
+            st.video("stage2_clear.mp4")   # autoplay_video をやめる
+            # autoplay_video("stage2_clear.mp4", width="70%")
+            st.session_state["stage2_clear_played"] = True
+        else:
+            st.video("stage2_clear.mp4")
+
         
         st.markdown("### 👉 次にやること")
         
@@ -1587,7 +1596,18 @@ elif st.session_state["page"] == "stage3":
             "これで基礎の魔法はばっちりね。"
         )
 
-        autoplay_video("stage3_clear.mp4", width="70%")
+        # ===============================
+        # 🎞 クリア動画（streamlit.app 安定版）
+        # ===============================
+        if "stage3_clear_played" not in st.session_state:
+            st.session_state["stage3_clear_played"] = False
+
+        if not st.session_state["stage3_clear_played"]:
+            st.video("stage3_clear.mp4")   # autoplay_video をやめる
+            # autoplay_video("stage3_clear.mp4", width="70%")
+            st.session_state["stage3_clear_played"] = True
+        else:
+            st.video("stage3_clear.mp4")
 
         st.markdown("### 👉 次にやること（1つえらんでね）")
 
