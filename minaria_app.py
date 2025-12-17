@@ -1456,11 +1456,29 @@ elif st.session_state["page"] == "stage2":
         
         # 🎞 ステージ2クリアアニメーション
         autoplay_video("stage2_clear.mp4", width="70%")
+        
+        st.markdown("### 👉 次にやること")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+        if st.button("🌀 ステージ3へ進む"):
+            st.session_state["page"] = "stage3"
+            st.rerun()
+            
+        with col2:
+        if st.button("🏠 タイトルにもどる"):
+            st.session_state["page"] = "home"
+            st.rerun()
 
-        if st.button("🔁 このステージを最初から復習する"):
+        with col3:
+        if st.button("🔁 このステージを復習する"):
             st.session_state["stage2_index"] = 0
             st.session_state["stage2_review"] = True
             st.rerun()
+            
+        # ✅ ここで止める（下に流れないように）
+        st.stop()
 
     else:
         q2 = STAGE2_QUESTIONS[idx2]
@@ -1514,10 +1532,14 @@ elif st.session_state["page"] == "stage2":
                             emoji="🌳",
                         )
                         st.info(f"ミナリア：{q2['explain']}")
+                        
+                    # ✅ 次へボタン方式（ここがポイント）
+                    if st.button("▶ 次へ進む", key=f"stage2_next_{idx2}"):
+                        st.session_state["stage2_index"] += 1
+                        st.rerun()
 
-                    # 次の問題へ進む
-                    st.session_state["stage2_index"] += 1
-                    st.rerun()
+                    # ✅ ボタンが押されるまでここで止める
+                    st.stop()
 
                 # ❌ 不正解の場合
                 else:
@@ -1607,7 +1629,10 @@ elif st.session_state["page"] == "stage3":
                 if user_choice3 == correct_choice3:
 
                     if st.session_state.get("stage3_review", False):
-                        st.success("⭕ 正解！塔の階段をスイスイのぼっていけるようになったよ。（復習モードなのでXPは変わらないよ）")
+                        st.success(
+                            "⭕ 正解！塔の階段をスイスイのぼっていけるようになったよ。"
+                            "（復習モードなのでXPは変わらないよ）"
+                        )
                         st.info(f"ミナリア：{q3['explain']}")
 
                     else:
@@ -1619,13 +1644,17 @@ elif st.session_state["page"] == "stage3":
                         )
                         st.info(f"ミナリア：{q3['explain']}")
 
-                    st.session_state["stage3_index"] += 1
-                    st.rerun()
+                    # ✅ 次へボタン方式
+                    if st.button("▶ 次へ進む", key=f"stage3_next_{idx3}"):
+                        st.session_state["stage3_index"] += 1
+                        st.rerun()
+
+                    # ✅ ここで止める（解説と演出を必ず見せる）
+                    st.stop()
 
                 else:
                     st.error("❌ ざんねん…！でも大丈夫、くり返しは少しずつ慣れていけばいいのよ。")
                     st.info(f"ミナリア：ヒントね。{q3['hint']}")
-
 
         st.markdown("---")
         if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
@@ -1635,8 +1664,6 @@ elif st.session_state["page"] == "stage3":
         if st.button("🏠 タイトルにもどる"):
             st.session_state["page"] = "home"
             st.rerun()
-
-
 
 # ======================================================
 #  ページ: チャット
@@ -1841,7 +1868,37 @@ elif st.session_state["page"] == "mypage":
         "if＝条件でチェックを分ける / "
         "for＝一覧を順番に処理する"
     )
+    
+    # -------------------------
+    # 次にやること（1つだけ）
+    # -------------------------
+    st.markdown("### 👉 次にやること")
 
+    # 進捗に応じて1つだけ提案
+    if done_stage1 < total_stage1:
+        st.info("🌱 ステージ1を続けましょう（まずは「画面に出す」ところまで）")
+        if st.button("▶ ステージ1へ行く"):
+            st.session_state["page"] = "stage1"
+            st.rerun()
+
+    elif done_stage2 < total_stage2:
+        st.info("🌿 次はステージ2へ進みましょう（if：『もし〜なら』の分かれ道）")
+        if st.button("▶ ステージ2へ行く"):
+            st.session_state["page"] = "stage2"
+            st.rerun()
+
+    elif done_stage3 < total_stage3:
+        st.info("🌀 次はステージ3へ進みましょう（for：くり返しの魔法）")
+        if st.button("▶ ステージ3へ行く"):
+            st.session_state["page"] = "stage3"
+            st.rerun()
+
+    else:
+        st.success("🎉 ぜんぶクリア！おつかれさまでした。復習して自信を固めましょう。")
+        if st.button("🔁 ステージ1で復習する"):
+            st.session_state["page"] = "stage1"
+            st.rerun()
+ 
     st.markdown("---")
 
     def stage_badge(done, total):
