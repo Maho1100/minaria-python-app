@@ -8,7 +8,7 @@ import uuid
 import json  # ★ 保存機能　あとでデータベースにする予定
 import pathlib #音
 import base64
-
+import re# 👀 正解したときに表示される見本出力
 
 
 # ---------- OpenAI クライアント ----------
@@ -759,7 +759,21 @@ st.markdown(
     "<h4 style='text-align: center; color:#8E6E95;'>C O C O M O A   K I N G D O M</h4>",
     unsafe_allow_html=True,
 )
-                   
+
+#この教材で自分がどうなるか」を常時表示
+st.markdown("""
+<div style="background:#F6FBFF;padding:14px 16px;border-radius:14px;border:1px solid #D6E9FF;color:#2A3B4C;">
+  <div style="font-weight:700;font-size:16px;">🎯 この教材を終えると、こうなります</div>
+  <div style="margin-top:6px; font-size:14px; line-height:1.6;">
+    ✅ Pythonの基礎が読める・書ける<br>
+    ✅ 「何が起きてるか」を自分で確認しながら学べる（バグで詰まらない）<br>
+    ✅ 最後に “ミニアプリ” を完成させ、仕事の時短に繋げられる
+  </div>
+  <div style="margin-top:8px;font-size:12px;color:#5B6B7A;">
+    ※ 今やっている場所：<b>ここから先は「1日10分」でも進められます</b>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ======================================================
 #  ページ: home
@@ -890,6 +904,35 @@ elif st.session_state["page"] == "stage1":
         )
 
         st.markdown("---")
+
+        # 📌 ミナリアの一言（printの不安を消す）
+        st.markdown("""
+        <div style="
+          background:#FFF4D6;
+          padding:16px 18px;
+          border-radius:14px;
+          border-left:6px solid #E6A800;
+          color:#1F2A37;
+          font-size:16px;
+          line-height:1.8;
+        ">
+          <b style="font-size:17px;">📌 ミナリアからのひとこと</b><br><br>
+          print はね、<br>
+          <span style="font-weight:700; color:#0F172A;">
+            「作業の途中経過を画面に出すメモ」
+          </span>
+          みたいなものよ。<br>
+          これができると、エラーで迷子になりにくくなるの。
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("""
+        ### 🗺 このステージで手に入るスキル
+        - ① print：画面に表示して“今なにが起きてるか”を確認できる
+        - ② 変数：値を箱に入れて、あとで使い回せる
+        - ③ 計算＋print：計算結果を表示できる（ミスが減る）
+        """)
+
         play_sound("sounds/minaria_Poyon.mp3")
         
 
@@ -965,8 +1008,45 @@ elif st.session_state["page"] == "stage1":
             key=f"stage1_copy_{idx}",
             height=80,
         )
+        
+        #st.code("Hello, world!", language=None)
+        
+        # --------------------------------------
+        # 👀 実行するとこう表示されるよ（出力）
+        # ※ 正解の print から自動生成
+        # --------------------------------------
 
-        # ⭐ これが「一度押したら二度と押せないボタン」
+        sample_code = q["copy_sample"].replace("'", '"')
+
+        st.markdown("#### 👀 実行するとこうなるよ（見本）")
+
+        # ① print("文字列")
+        m_print_str = re.search(r'print\s*\(\s*"(.+?)"\s*\)', sample_code)
+        if m_print_str:
+            st.code(m_print_str.group(1), language=None)
+            st.caption("print() は文字をそのまま表示する魔法だよ。")
+
+        else:
+            # ② print(数字 + 数字)
+            m_calc = re.search(r'print\s*\(\s*([0-9+\-*/\s]+)\s*\)', sample_code)
+            if m_calc:
+                try:
+                    result = eval(m_calc.group(1))
+                    st.code(str(result), language=None)
+                    st.caption("中の計算をしてから、結果を表示しているよ。")
+                except Exception:
+                    st.code("（計算結果）", language=None)
+
+            else:
+                # ③ その他（代入など）
+                st.code("（画面には何も表示されません）", language=None)
+                st.caption("この問題は、準備や仕組みを学ぶステップだよ。")
+
+
+
+        # --------------------------------------
+        # ✅ 正解チェック（1回だけ押せる）
+        # --------------------------------------
         if one_time_button(
             "できたかチェック",
             key=f"stage1_copy_btn_{idx}",
@@ -979,9 +1059,10 @@ elif st.session_state["page"] == "stage1":
 
             elif normalize_code(code_input) == normalize_code(q["copy_sample"]):
 
+                st.session_state["stage1_copy_correct"] = True
                 st.session_state[f"stage1_last_copy_code_{idx}"] = code_input
 
-                # ⭐ 復習モードのときはXPを増やさない
+                # ⭐ フィードバック（XP）
                 if st.session_state.get("stage1_review", False):
                     show_correct_feedback(
                         message="ばっちり！見本どおりに書けたよ。（復習モードなのでXPは変わらないよ）",
@@ -989,25 +1070,88 @@ elif st.session_state["page"] == "stage1":
                         monster_emoji="🐣",
                     )
                 else:
-                    # ⭐ 初回クリア用：STEP0 専用の key を使う
                     award_xp_once(
                         key=f"stage1_{idx}_step0",
                         xp=10,
-                        message="ばっちり！見本どおりに書けたよ。次は同じ内容のクイズにチャレンジしよう。",
+                        message="ばっちり！見本どおりに書けたよ。下で実行して結果を見てみよう。",
                         emoji="🐣",
                     )
-
-                st.session_state["stage1_copy_correct"] = True
 
             else:
                 st.error("うーん、少しちがうみたい。スペルやカッコの位置を見比べてみよう。")
                 st.session_state["stage1_copy_correct"] = False
 
+        # ==================================================
+        # 🎯 正解後：printの「現象」を体験させるゾーン
+        # ==================================================
         if st.session_state.get("stage1_copy_correct", False):
+
+            if st.button("▶ 実行してみる", key=f"run_stage1_copy_{idx}"):
+
+                
+
+                code = st.session_state.get(f"stage1_last_copy_code_{idx}", "")
+                code = code.replace("'", '"')
+
+                # -----------------------------
+                # ① print("文字列") の場合
+                # -----------------------------
+                m_print_str = re.search(r'print\s*\(\s*"(.+?)"\s*\)', code)
+                if m_print_str:
+                    st.markdown("#### 📺 出力")
+                    st.code(m_print_str.group(1), language=None)
+                    st.success("💡 print の中に書いた文字が、そのまま表示されているよ！")
+
+                else:
+                    # -----------------------------
+                    # ② 変数代入 → print(name) の場合
+                    # -----------------------------
+                    m_assign = re.search(
+                        r'^\s*([a-zA-Z_]\w*)\s*=\s*"(.+?)"\s*$',
+                        code,
+                        flags=re.M
+                    )
+
+                    m_print_var = re.search(
+                        r'print\s*\(\s*([a-zA-Z_]\w*)\s*\)',
+                        code
+                    )
+
+                    if m_assign and m_print_var:
+                        var_name, var_value = m_assign.group(1), m_assign.group(2)
+                        printed_var = m_print_var.group(1)
+
+                        if var_name == printed_var:
+                            st.markdown("#### 📺 出力")
+                            st.code(var_value, language=None)
+                            st.success(
+                                f'💡 {var_name} に入れた "{var_value}" が表示されているよ！'
+                            )
+                        else:
+                            st.info("変数に入れた名前と、printで表示した名前がちがうみたい。")
+
+                    # -----------------------------
+                    # ③ 代入だけ（表示はされない）
+                    # -----------------------------
+                    elif m_assign:
+                        var_name, var_value = m_assign.group(1), m_assign.group(2)
+                        st.markdown("#### 📺 出力")
+                        st.code("（画面には何も表示されません）", language=None)
+                        st.info(
+                            f'これは「{var_name} に "{var_value}" を入れる練習」だよ。'
+                            " 表示されないのが正解！"
+                        )
+
+                    else:
+                        st.info("この問題は、表示のしくみを練習するステップだよ。")
+
+
+
             if st.button("▶ クイズに進む", key=f"stage1_to_quiz_{idx}"):
                 st.session_state["stage1_step"] = 1
                 st.session_state["stage1_copy_correct"] = False
                 st.rerun()
+
 
     # ======================================================
     # STEP 1：3択問題
