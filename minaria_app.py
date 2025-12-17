@@ -209,6 +209,65 @@ def one_time_button(label, key, allow_retry=False):
     if clicked:
         st.session_state[key] = True
     return clicked
+# ======================================================
+#  この冒険でできるようになるメッセージ関数
+# ======================================================
+def render_promise_banner():
+    """
+    成長フェーズに応じて「約束メッセージ」を表示する
+    フェーズ1：初回〜ステージ1クリア前（フル表示）
+    フェーズ2：ステージ1クリア後（短縮）
+    フェーズ3：3日以上空いた再開時（おかえりなさい）
+    """
+
+    stage1_cleared = st.session_state.get("stage1_cleared", False)
+    show_return = st.session_state.get("show_return_banner", False)
+
+    # フェーズ3：久しぶり再開
+    if show_return:
+        st.markdown("""
+        <div style="background:#FDF5FF;padding:14px 16px;border-radius:14px;
+                    border:1px solid #E4D3F3;color:#5F4C5B;">
+          <div style="font-weight:700;font-size:16px;">🌼 おかえりなさい</div>
+          <div style="margin-top:6px;font-size:14px;line-height:1.7;">
+            ここでは、<b>パソコンへのお願い（プログラム）</b>の考え方を、
+            ゆっくり身につけられますよ。
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+        return
+
+    # フェーズ1：初回〜ステージ1クリア前
+    if not stage1_cleared:
+        st.markdown("""
+        <div style="background:#F6FBFF;padding:14px 16px;border-radius:14px;
+                    border:1px solid #D6E9FF;color:#2A3B4C;">
+          <div style="font-weight:700;font-size:16px;">
+            この冒険でできるようになること
+          </div>
+          <div style="margin-top:6px;font-size:14px;line-height:1.7;">
+            ✅ パソコンに指示を出す文章（プログラム）が読める<br>
+            ✅ 仕事の作業を楽にする考え方が身につく<br>
+            ✅ 「自分にもできた！」という自信がつく
+          </div>
+          <div style="margin-top:8px;font-size:13px;color:#5B6B7A;">
+            学ぶこと：<b>print / 変数 / if / for</b>（まずはここだけ）
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+        return
+
+    # フェーズ2：ステージ1クリア後
+    st.markdown("""
+    <div style="background:#F6FBFF;padding:10px 14px;border-radius:14px;
+                border:1px solid #D6E9FF;color:#2A3B4C;">
+      <div style="font-size:14px;line-height:1.6;">
+        🌱 パソコンへのお願い（プログラム）の考え方を、
+        少しずつ覚えていきましょう
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 
 # ======================================================
 #  初回正解だけ XP を付与する共通関数（キーは呼び出し側で決める）
@@ -646,6 +705,13 @@ if "last_login_date" not in st.session_state:
 if "login_bonus_given_today" not in st.session_state:
     st.session_state["login_bonus_given_today"] = False
 
+# --- プレイ日管理（フェーズ3用）---
+if "last_play_date" not in st.session_state:
+    st.session_state["last_play_date"] = None
+
+if "show_return_banner" not in st.session_state:
+    st.session_state["show_return_banner"] = False
+
 
 # ステージ1用 ----------
 if "stage1_index" not in st.session_state:
@@ -743,9 +809,32 @@ def show_correct_feedback(message: str, xp_gain: int, monster_emoji: str = "👾
 
 # ---------- ログインボーナス ----------
 today_str = datetime.date.today().isoformat()
+
+# ===============================
+# フェーズ3：3日以上あいた再開判定
+# ===============================
+today = datetime.date.today()
+
+last_play_date = st.session_state.get("last_play_date")
+
+if last_play_date:
+    last = datetime.date.fromisoformat(last_play_date)
+    if (today - last).days >= 3:
+        st.session_state["show_return_banner"] = True
+    else:
+        st.session_state["show_return_banner"] = False
+else:
+    # 初回起動
+    st.session_state["show_return_banner"] = False
+
+# 最終プレイ日を更新（判定後に！）
+st.session_state["last_play_date"] = today.isoformat()
+
+# ---------- ログインボーナス判定 ----------
 if st.session_state["last_login_date"] != today_str:
     st.session_state["last_login_date"] = today_str
     st.session_state["login_bonus_given_today"] = False
+
 
 
 # ======================================================
@@ -759,21 +848,6 @@ st.markdown(
     "<h4 style='text-align: center; color:#8E6E95;'>C O C O M O A   K I N G D O M</h4>",
     unsafe_allow_html=True,
 )
-
-#この教材で自分がどうなるか」を常時表示
-st.markdown("""
-<div style="background:#F6FBFF;padding:14px 16px;border-radius:14px;border:1px solid #D6E9FF;color:#2A3B4C;">
-  <div style="font-weight:700;font-size:16px;">🎯 この教材を終えると、こうなります</div>
-  <div style="margin-top:6px; font-size:14px; line-height:1.6;">
-    ✅ Pythonの基礎が読める・書ける<br>
-    ✅ 「何が起きてるか」を自分で確認しながら学べる（バグで詰まらない）<br>
-    ✅ 最後に “ミニアプリ” を完成させ、仕事の時短に繋げられる
-  </div>
-  <div style="margin-top:8px;font-size:12px;color:#5B6B7A;">
-    ※ 今やっている場所：<b>ここから先は「1日10分」でも進められます</b>
-  </div>
-</div>
-""", unsafe_allow_html=True)
 
 # ======================================================
 #  ページ: home
@@ -845,29 +919,43 @@ if st.session_state["page"] == "home":
 #  ページ: 導入シナリオ
 # ======================================================
 elif st.session_state["page"] == "intro":
-    st.image("minaria.png", use_container_width=True)
-    st.markdown(
-        "<h3 style='text-align:center; color:#6A5A78;'>ミナリアのことば</h3>",
-        unsafe_allow_html=True,
-    )
 
-    st.markdown(
-        f"<div style='background-color:#FDF5FF; padding:20px; border-radius:15px; "
-        f"border:1px solid #E4D3F3; color:#5F4C5B; font-size:16px;'>{INTRO_MESSAGE.replace(chr(10), '<br>')}</div>",
-        unsafe_allow_html=True,
-    )
+        # ミナリア画像
+        st.image("minaria.png", use_container_width=True)
 
-    st.markdown("")
-    
-    play_sound("sounds/title_fanfare.mp3")
-    
-    if st.button("👩‍🍼 ミナリアと話してみる"):
-        st.session_state["page"] = "chat"
-        st.rerun()
+        # ★ 成長フェーズに応じた「約束」バナー（画像の直下）
+        render_promise_banner()
 
-    if st.button("🏠 タイトルにもどる"):
-        st.session_state["page"] = "home"
-        st.rerun()
+        st.markdown("---")
+
+        # イントロテキスト
+        st.markdown(
+            """
+            ### ようこそ、ココモア王国へ 🌱
+
+            ここは、Pythonの魔法で  
+            こまっているモンスターを助けながら、  
+            **パソコンへのお願いのしかた**を学ぶ場所です。
+
+            むずかしい言葉は、できるだけ使いません。  
+            まちがえても大丈夫。  
+            ミナリアと一緒に、ゆっくり進みましょう。
+            """
+        )
+
+        # ボタン類（既存のものをそのまま）
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("🌟 冒険をはじめる"):
+                st.session_state["page"] = "home"
+                st.rerun()
+
+        with col2:
+            if st.button("📖 つかいかたを見る"):
+                st.session_state["page"] = "help"
+                st.rerun()
+
 
 
 # ======================================================
