@@ -1051,13 +1051,6 @@ elif st.session_state["page"] == "stage1":
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown("""
-        ### 🗺 このステージで手に入るスキル
-        - ① print：画面に表示して“今なにが起きてるか”を確認できる
-        - ② 変数：値を箱に入れて、あとで使い回せる
-        - ③ 計算＋print：計算結果を表示できる（ミスが減る）
-        """)
-
         play_sound("sounds/minaria_Poyon.mp3")
         
 
@@ -1838,6 +1831,15 @@ elif st.session_state["page"] == "mypage":
         skill_pill("条件で分けられた（if）", unlocked_if) +
         skill_pill("くり返せた（for）", unlocked_for),
         unsafe_allow_html=True
+    )
+    
+    # ✅ ここに追加（バッジの説明を集約）
+    st.info(
+        "💡 バッジは「仕事で役立つ力」の目印です："
+        "print＝途中経過を見てミスを減らす / "
+        "変数＝値をまとめて使い回す / "
+        "if＝条件でチェックを分ける / "
+        "for＝一覧を順番に処理する"
     )
 
     st.markdown("---")
