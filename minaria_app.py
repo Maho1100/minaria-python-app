@@ -230,7 +230,7 @@ def render_promise_banner():
                     border:1px solid #E4D3F3;color:#5F4C5B;">
           <div style="font-weight:700;font-size:16px;">🌼 おかえりなさい</div>
           <div style="margin-top:6px;font-size:14px;line-height:1.7;">
-            ここでは、<b>パソコンへのお願い（プログラム）</b>の考え方を、
+            ここでは、<b>パソコンに指示を出す文章（プログラム）</b>の考え方を、
             ゆっくり身につけられますよ。
           </div>
         </div>
@@ -262,7 +262,7 @@ def render_promise_banner():
     <div style="background:#F6FBFF;padding:10px 14px;border-radius:14px;
                 border:1px solid #D6E9FF;color:#2A3B4C;">
       <div style="font-size:14px;line-height:1.6;">
-        🌱 パソコンへのお願い（プログラム）の考え方を、
+        🌱 パソコンに指示を出す文章（プログラム）の考え方を、
         少しずつ覚えていきましょう
       </div>
     </div>
@@ -484,6 +484,17 @@ STAGE1_QUESTIONS = [
         "monster_image": "monster_sum_cloud.png",
     },
 ]
+# ---------- ステージ1冒頭（10秒定義）は、40〜60代の離脱を一番防ぐ ----------
+STAGE1_INTRO_MESSAGE = """
+### はじめに（10秒だけ）
+
+**プログラム**は、パソコンへの「お願いメモ」です。  
+**実行**は、そのメモをほんとうにやってもらうこと。  
+**変数**は、あとで使うための「名前つきの箱」です。
+
+今日はこの3つを使って、  
+**自分の言葉を画面に出す**ところまでやってみましょう 🌱
+"""
 
 # ---------- ステージ2：もりねむの小道（if文 3択＋モンスター） ----------
 STAGE2_QUESTIONS = [
@@ -983,7 +994,7 @@ elif st.session_state["page"] == "stage1":
     if step == -1:
 
         st.markdown(
-            """
+        """
         ここは、ココモア王国の入口「ポヨンのはらっぱ」。  
         地面がぽよんぽよんしていて、はじめての冒険者でも安心して歩ける場所です。  
 
@@ -993,6 +1004,28 @@ elif st.session_state["page"] == "stage1":
         )
 
         st.markdown("---")
+        
+        # ✅ 10秒でわかる：プログラム／実行／変数（生活語）
+        st.markdown("""
+        <div style="
+          background:#EEF7FF;
+          padding:14px 16px;
+          border-radius:14px;
+          border:1px solid #CFE6FF;
+          color:#1F2A37;
+          font-size:15px;
+          line-height:1.8;
+          margin-top:6px;
+        ">
+          <b style="font-size:16px;">⏱ 10秒でわかる3つ</b><br>
+          ✅ <b>プログラム</b>：パソコンへの「お願いメモ」<br>
+          ✅ <b>実行</b>：そのお願いを「いまやってもらう」こと<br>
+          ✅ <b>変数</b>：あとで使うための「名前つきの箱」<br>
+          <span style="font-size:12px; color:#4B5563;">
+            ※ この3つがわかると、仕事の“確認・整理”が速くなります
+          </span>
+        </div>
+        """, unsafe_allow_html=True)
 
         # 📌 ミナリアの一言（printの不安を消す）
         st.markdown("""
@@ -1028,7 +1061,8 @@ elif st.session_state["page"] == "stage1":
         if st.button("🌱 はじめる"):
             st.session_state["stage1_step"] = 0
             st.rerun()
-
+            
+        # ✅ 導入画面はここで止める（この下の問題表示に進ませない）
         st.stop()
 
     # ---------------------------------------------------
@@ -1751,8 +1785,42 @@ elif st.session_state["page"] == "mypage":
         1 for i in range(total_stage3)
         if solved.get(f"stage3_{i}", False)
     )
+    
+    # -------------------------
+    # できることバッジ（成果の見える化）
+    # -------------------------
+    st.markdown("### ✅ できるようになったこと")
 
+    unlocked_print_var = (done_stage1 >= total_stage1)   # ステージ1クリアで解放
+    unlocked_if        = (done_stage2 >= total_stage2)   # ステージ2クリアで解放
+    unlocked_for       = (done_stage3 >= total_stage3)   # ステージ3クリアで解放
 
+    def skill_pill(text, unlocked):
+        bg = "#DFF7E7" if unlocked else "#EFEFEF"
+        fg = "#2A3B4C" if unlocked else "#888888"
+        icon = "🏅" if unlocked else "⬜"
+        return f"""
+        <span style="
+            display:inline-block;
+            padding:8px 12px;
+            margin:4px 6px 0 0;
+            border-radius:999px;
+            background:{bg};
+            color:{fg};
+            border:1px solid #DDDDDD;
+            font-size:14px;
+        ">{icon} {text}</span>
+        """
+
+    st.markdown(
+        skill_pill("画面に出せた（print）", unlocked_print_var) +
+        skill_pill("箱に入れられた（変数）", unlocked_print_var) +
+        skill_pill("条件で分けられた（if）", unlocked_if) +
+        skill_pill("くり返せた（for）", unlocked_for),
+        unsafe_allow_html=True
+    )
+
+    st.markdown("---")
 
     def stage_badge(done, total):
         if done >= total:
