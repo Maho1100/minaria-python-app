@@ -247,6 +247,9 @@ def render_promise_banner():
           </div>
           <div style="margin-top:6px;font-size:14px;line-height:1.7;">
             ✅ パソコンに指示を出す文章（プログラム）が読める<br>
+            <span style="display:inline-block; margin-left:22px; font-size:12px; color:#5B6B7A;">
+          （「これを表示して」「ここだけ確認して」と伝える方法）
+            </span><br>
             ✅ 仕事の作業を楽にする考え方が身につく<br>
             ✅ 「自分にもできた！」という自信がつく
           </div>
