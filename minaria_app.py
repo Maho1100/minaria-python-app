@@ -919,43 +919,35 @@ if st.session_state["page"] == "home":
 #  ページ: 導入シナリオ
 # ======================================================
 elif st.session_state["page"] == "intro":
+    # ミナリア画像
+    st.image("minaria.png", use_container_width=True)
 
-        # ミナリア画像
-        st.image("minaria.png", use_container_width=True)
+    # ★ 成長フェーズに応じた「約束」バナー（画像の直下）
+    render_promise_banner()
 
-        # ★ 成長フェーズに応じた「約束」バナー（画像の直下）
-        render_promise_banner()
+    st.markdown(
+        "<h3 style='text-align:center; color:#6A5A78;'>ミナリアのことば</h3>",
+        unsafe_allow_html=True,
+    )
 
-        st.markdown("---")
+    st.markdown(
+        f"<div style='background-color:#FDF5FF; padding:20px; border-radius:15px; "
+        f"border:1px solid #E4D3F3; color:#5F4C5B; font-size:16px;'>"
+        f"{INTRO_MESSAGE.replace(chr(10), '<br>')}</div>",
+        unsafe_allow_html=True,
+    )
 
-        # イントロテキスト
-        st.markdown(
-            """
-            ### ようこそ、ココモア王国へ 🌱
+    st.markdown("")
 
-            ここは、Pythonの魔法で  
-            こまっているモンスターを助けながら、  
-            **パソコンへのお願いのしかた**を学ぶ場所です。
+    play_sound("sounds/title_fanfare.mp3")
 
-            むずかしい言葉は、できるだけ使いません。  
-            まちがえても大丈夫。  
-            ミナリアと一緒に、ゆっくり進みましょう。
-            """
-        )
+    if st.button("👩‍🍼 ミナリアと話してみる"):
+        st.session_state["page"] = "chat"
+        st.rerun()
 
-        # ボタン類（既存のものをそのまま）
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button("🌟 冒険をはじめる"):
-                st.session_state["page"] = "home"
-                st.rerun()
-
-        with col2:
-            if st.button("📖 つかいかたを見る"):
-                st.session_state["page"] = "help"
-                st.rerun()
-
+    if st.button("🏠 タイトルにもどる"):
+        st.session_state["page"] = "home"
+        st.rerun()
 
 
 # ======================================================
