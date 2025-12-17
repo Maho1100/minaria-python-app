@@ -938,6 +938,15 @@ elif st.session_state["page"] == "intro":
     )
 
     st.markdown("")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # ✅ 初心者のメイン導線：intro → stage1
+        if st.button("🌱 学習をはじめる（ステージ1へ）"):
+            st.session_state["page"] = "stage1"
+            # ステージ1の導入画面（step=-1）から始めたいならこれでOK（既に -1 が初期）
+            st.rerun()
 
     play_sound("sounds/title_fanfare.mp3")
 
