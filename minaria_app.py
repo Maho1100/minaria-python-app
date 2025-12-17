@@ -1123,6 +1123,23 @@ elif st.session_state["page"] == "stage1":
     # STEP 0：見本どおりに写す
     # ======================================================
     if step == 0:
+        
+        # ✅ ここに追加（最初に表示）
+        st.markdown("""
+        <div style="
+            background:#F8FAFC;
+           padding:10px 14px;
+           border-radius:12px;
+           border-left:4px solid #94A3B8;
+           color:#334155;
+           font-size:14px;
+           line-height:1.6;
+           margin-bottom:10px;
+        ">
+           ※ ここは「まねして書く」だけで大丈夫。<br>
+           意味は、あとで少しずつ分かってきます 🌱
+        </div>
+        """, unsafe_allow_html=True)
 
         st.info(q["lesson_intro"])
 
