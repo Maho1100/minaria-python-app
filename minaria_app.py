@@ -1550,6 +1550,7 @@ elif st.session_state["page"] == "stage2":
             # 選択されていない場合
             if user_choice2 is None:
                 st.warning("どれか1つを選んでから、『解答する』ボタンを押してね。")
+                st.session_state["stage2_last_answer_correct"] = False
 
             else:
                 correct_choice2 = q2["choices"][q2["correct_index"]]
@@ -1571,19 +1572,21 @@ elif st.session_state["page"] == "stage2":
                             emoji="🌳",
                         )
                         st.info(f"ミナリア：{q2['explain']}")
-                        
-                    # ✅ 次へボタン方式（ここがポイント）
-                    if st.button("▶ 次へ進む", key=f"stage2_next_{idx2}"):
-                        st.session_state["stage2_index"] += 1
-                        st.rerun()
 
-                    # ✅ ボタンが押されるまでここで止める
-                    st.stop()
+                    st.session_state["stage2_last_answer_correct"] = True
 
                 # ❌ 不正解の場合
                 else:
                     st.error("❌ ざんねん…！でも大丈夫、ここで迷うのは当たり前なの。")
                     st.info(f"ミナリア：ヒントね。{q2['hint']}")
+                    st.session_state["stage2_last_answer_correct"] = False
+
+        # ✅ 正解後は「次へ進む」ボタンを表示（ボタン処理の外側で判定）
+        if st.session_state.get("stage2_last_answer_correct", False):
+            if st.button("▶ 次へ進む", key=f"stage2_next_{idx2}"):
+                st.session_state["stage2_index"] += 1
+                st.session_state["stage2_last_answer_correct"] = False
+                st.rerun()
 
         st.markdown("---")
         if st.button("👩‍🍼 ミナリアとお話する（チャットへ）"):
@@ -1599,6 +1602,13 @@ elif st.session_state["page"] == "stage2":
 #  ページ: ステージ3 くるくるループの塔（for文 3択＋モンスター）
 # ======================================================
 elif st.session_state["page"] == "stage3":
+
+    # ===============================
+    # 🔰 ステージ3用 session_state 初期化
+    # ===============================
+    if "stage3_last_answer_correct" not in st.session_state:
+        st.session_state["stage3_last_answer_correct"] = False
+
     st.subheader("🌀 ステージ3：くるくるループの塔")
 
     st.markdown(
@@ -1693,6 +1703,7 @@ elif st.session_state["page"] == "stage3":
             # まだ何も選んでないとき
             if user_choice3 is None:
                 st.warning("どれか1つを選んでから、『解答する』ボタンを押してね。")
+                st.session_state["stage3_last_answer_correct"] = False
 
             else:
                 correct_choice3 = q3["choices"][q3["correct_index"]]
@@ -1715,17 +1726,19 @@ elif st.session_state["page"] == "stage3":
                         )
                         st.info(f"ミナリア：{q3['explain']}")
 
-                    # ✅ 次へボタン方式
-                    if st.button("▶ 次へ進む", key=f"stage3_next_{idx3}"):
-                        st.session_state["stage3_index"] += 1
-                        st.rerun()
-
-                    # ✅ ここで止める（解説と演出を必ず見せる）
-                    st.stop()
+                    st.session_state["stage3_last_answer_correct"] = True
 
                 else:
                     st.error("❌ ざんねん…！でも大丈夫、くり返しは少しずつ慣れていけばいいのよ。")
                     st.info(f"ミナリア：ヒントね。{q3['hint']}")
+                    st.session_state["stage3_last_answer_correct"] = False
+
+        # ✅ 正解後は「次へ進む」ボタンを表示（ボタン処理の外側で判定）
+        if st.session_state.get("stage3_last_answer_correct", False):
+            if st.button("▶ 次へ進む", key=f"stage3_next_{idx3}"):
+                st.session_state["stage3_index"] += 1
+                st.session_state["stage3_last_answer_correct"] = False
+                st.rerun()
 
         st.markdown("---")
 
